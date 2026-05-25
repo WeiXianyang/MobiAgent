@@ -7,8 +7,10 @@ from pathlib import Path
 
 from runner.mobiagent.profile_pipeline.extract import events_from_runs
 from runner.mobiagent.profile_pipeline.ingest import collect_successful_runs, default_test_runs_dir
+from runner.mobiagent.profile_pipeline.mem0_rag import build_memory_records, search_memories, sync_memory_records
 from runner.mobiagent.profile_pipeline.profile import build_profile_and_todos
 from runner.mobiagent.profile_pipeline.relation import build_relations
+from runner.mobiagent.profile_pipeline.schemas import ProfileItem, Relation, TodoItem, UserEvent
 from runner.mobiagent.profile_pipeline.search import build_search_documents, search_documents
 from runner.mobiagent.profile_pipeline.cli import default_report_path, write_report
 
@@ -19,6 +21,41 @@ SUCCESS_RUNS = [
     "20260525-011614-basic-gui-task-meituan-goal-v7",
     "20260525-024026-basic-gui-task-taobao-goal-v9",
 ]
+
+
+class FakeMemory:
+    def __init__(self) -> None:
+        self.add_calls: list[dict] = []
+        self.search_calls: list[dict] = []
+
+    def add(self, text: str, *, user_id: str, infer: bool, metadata: dict) -> dict:
+        self.add_calls.append({"text": text, "user_id": user_id, "infer": infer, "metadata": metadata})
+        return {"id": f"mem-{len(self.add_calls)}", "memory": text}
+
+    def search(self, query: str, *, user_id: str, limit: int) -> list[dict]:
+        self.search_calls.append({"query": query, "user_id": user_id, "limit": limit})
+        return [{"id": "mem-1", "memory": "购物偏好：近期浏览过建材", "score": 0.8}]
+
+    def get_all(self, *, user_id: str, limit: int) -> list[dict]:
+        return [{"id": "mem-2", "memory": "待办 复查近期购物需求并进行比价", "metadata": {"kind": "todo"}}]
+
+
+def sample_event() -> UserEvent:
+    return UserEvent(
+        event_id="evt_shop",
+        user_id="default_user",
+        app="淘宝",
+        package_name="com.taobao.taobao",
+        event_time="2026-05-25T00:00:00",
+        source_run="run-taobao",
+        source_step="8.iter1.2",
+        evidence_paths=["screen.jpg"],
+        event_type="shopping_browse",
+        summary="当前截图商品浏览摘要",
+        entities={"product_categories": ["建材"], "price_signal": ["¥3.02"]},
+        confidence=0.85,
+        privacy_level="derived",
+    )
 
 
 def write_summary(run_dir: Path, package_name: str, app_name: str, structured: dict, *, image_name: str = "screen.jpg") -> None:
@@ -275,6 +312,65 @@ class ProfilePipelineTests(unittest.TestCase):
         self.assertTrue(any(todo.status == "candidate" for todo in todos))
         self.assertGreaterEqual(hits[0]["score"], 1)
         self.assertIn("购物", hits[0]["text"])
+
+    def test_mem0_records_preserve_evidence_metadata_for_rag(self) -> None:
+        event = sample_event()
+        relation = Relation(
+            relation_id="rel_shop",
+            relation_type="behavior_causal",
+            source_event_id=event.event_id,
+            target_event_id=None,
+            description="浏览足迹可作为近期购物需求的弱证据",
+            evidence_event_ids=[event.event_id],
+            confidence=0.7,
+        )
+        profile = ProfileItem(
+            profile_id="profile_shop",
+            category="购物偏好",
+            claim="候选购物偏好：近期浏览过建材。",
+            evidence_event_ids=[event.event_id],
+            confidence=0.78,
+            time_range="recent",
+            service_eligible=True,
+        )
+        todo = TodoItem(
+            todo_id="todo_shop",
+            title="复查近期购物需求并进行比价",
+            reason="淘宝足迹只证明近期浏览，适合生成弱提醒。",
+            source_event_ids=[event.event_id],
+            priority="low",
+            due_time=None,
+            status="candidate",
+        )
+
+        records = build_memory_records([event], [relation], [profile], [todo])
+
+        self.assertEqual({record["metadata"]["kind"] for record in records}, {"event", "relation", "profile", "todo"})
+        profile_record = next(record for record in records if record["metadata"]["kind"] == "profile")
+        self.assertIn("购物偏好", profile_record["text"])
+        self.assertEqual(profile_record["metadata"]["source_event_ids"], [event.event_id])
+        self.assertTrue(profile_record["metadata"]["service_eligible"])
+
+    def test_sync_and_search_use_external_mem0_client(self) -> None:
+        memory = FakeMemory()
+        records = build_memory_records([sample_event()], [], [], [])
+
+        inserted = sync_memory_records(memory, records, user_id="task2_user")
+        hits = search_memories(memory, "最近购物偏好", user_id="task2_user", limit=3)
+
+        self.assertEqual(len(inserted), 1)
+        self.assertEqual(memory.add_calls[0]["user_id"], "task2_user")
+        self.assertFalse(memory.add_calls[0]["infer"])
+        self.assertEqual(memory.add_calls[0]["metadata"]["source"], "task2_profile_pipeline")
+        self.assertEqual(memory.search_calls, [{"query": "最近购物偏好", "user_id": "task2_user", "limit": 3}])
+        self.assertEqual(hits[0]["memory"], "购物偏好：近期浏览过建材")
+
+    def test_todo_rag_search_enriches_with_external_mem0_records(self) -> None:
+        memory = FakeMemory()
+
+        hits = search_memories(memory, "用户有哪些待办", user_id="task2_user", limit=1)
+
+        self.assertEqual(hits[0]["metadata"]["kind"], "todo")
 
     def test_report_records_verification_commands(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

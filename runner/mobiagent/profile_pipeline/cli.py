@@ -2,11 +2,20 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 from typing import Any
 
 from .extract import events_from_runs
 from .ingest import DEFAULT_SUCCESS_RUNS, collect_successful_runs, default_test_runs_dir
+from .mem0_rag import (
+    DEFAULT_USER_ID,
+    build_memory_records,
+    create_memory_client,
+    default_env_file,
+    search_memories,
+    sync_memory_records,
+)
 from .profile import build_profile_and_todos
 from .relation import build_relations
 from .search import build_search_documents, search_documents
@@ -72,6 +81,50 @@ def load_search_index(artifacts_dir: Path) -> list[dict[str, Any]]:
     return json.loads((artifacts_dir / "search_index.json").read_text(encoding="utf-8"))
 
 
+def load_rag_sync_summary(artifacts_dir: Path) -> dict[str, Any] | None:
+    path = artifacts_dir / "rag_sync.json"
+    if not path.exists():
+        return None
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _extract_memory_ids(result: Any) -> list[str]:
+    if isinstance(result, dict):
+        if isinstance(result.get("id"), str):
+            return [result["id"]]
+        if isinstance(result.get("results"), list):
+            return [str(item["id"]) for item in result["results"] if isinstance(item, dict) and item.get("id")]
+    if isinstance(result, list):
+        return [str(item["id"]) for item in result if isinstance(item, dict) and item.get("id")]
+    return []
+
+
+def write_rag_sync_summary(
+    inserted: list[dict[str, Any]],
+    records: list[dict[str, Any]],
+    artifacts_dir: Path,
+    user_id: str,
+) -> dict[str, Any]:
+    kinds: dict[str, int] = {}
+    memory_ids: list[str] = []
+    for item in inserted:
+        record = item["record"]
+        kind = record["metadata"]["kind"]
+        kinds[kind] = kinds.get(kind, 0) + 1
+        memory_ids.extend(_extract_memory_ids(item["result"]))
+    summary = {
+        "backend": "Mem0 + Milvus",
+        "user_id": user_id,
+        "collection_name": os.getenv("MEM0_COLLECTION_NAME", "mobiagent"),
+        "record_count": len(records),
+        "inserted_count": len(inserted),
+        "kinds": kinds,
+        "memory_ids": memory_ids,
+    }
+    _write_json(artifacts_dir / "rag_sync.json", summary)
+    return summary
+
+
 def write_report(result: dict[str, Any], artifacts_dir: Path, report_path: Path) -> None:
     records = result["records"]
     events = result["events"]
@@ -85,6 +138,7 @@ def write_report(result: dict[str, Any], artifacts_dir: Path, report_path: Path)
         hits = search_documents(search_docs, query, limit=3)
         rendered = "; ".join(f"{hit['kind']}:{hit['id']} score={hit['score']}" for hit in hits) or "无命中"
         search_lines.append(f"- `{query}` -> {rendered}")
+    rag_sync = load_rag_sync_summary(artifacts_dir)
 
     lines = [
         "# 任务2 用户多模态数据管理与画像生成阶段报告",
@@ -131,6 +185,19 @@ def write_report(result: dict[str, Any], artifacts_dir: Path, report_path: Path)
     for todo in todos:
         lines.append(f"- {todo.title}: {todo.reason} status={todo.status} priority={todo.priority}")
     lines.extend(["", "## 检索示例", "", *search_lines])
+    lines.extend(["", "## 外部 Mem0/Milvus RAG", ""])
+    if rag_sync:
+        lines.extend(
+            [
+                f"- backend: {rag_sync.get('backend', 'Mem0 + Milvus')}",
+                f"- collection: {rag_sync.get('collection_name', '')}",
+                f"- user_id: {rag_sync.get('user_id', '')}",
+                f"- inserted_count: {rag_sync.get('inserted_count', 0)}",
+                f"- kinds: {json.dumps(rag_sync.get('kinds', {}), ensure_ascii=False)}",
+            ]
+        )
+    else:
+        lines.append("- 尚未生成 `rag_sync.json`；请先运行 `build-rag` 将任务2结果写入外部 Mem0/Milvus。")
     lines.extend(
         [
             "",
@@ -138,6 +205,8 @@ def write_report(result: dict[str, Any], artifacts_dir: Path, report_path: Path)
             "",
             "- `python -m unittest runner.mobiagent.profile_pipeline.test_profile_pipeline` -> 单元测试覆盖采集、抽取、关系、画像、待办、检索与报告结构。",
             "- `python -m runner.mobiagent.profile_pipeline.cli build-profile` -> 生成事件、关系、画像、待办和检索索引。",
+            "- `python -m runner.mobiagent.profile_pipeline.cli build-rag` -> 将事件、关系、画像和待办写入外部 Mem0/Milvus。",
+            "- `python -m runner.mobiagent.profile_pipeline.cli rag-search --query \"最近购物偏好\"` -> 从外部 Mem0/Milvus RAG 召回画像和待办。",
             "- `python -m runner.mobiagent.profile_pipeline.cli search --query \"最近购物偏好\"` -> 命中购物画像和候选待办。",
             "- `python -m runner.mobiagent.profile_pipeline.cli search --query \"用户有哪些待办\"` -> 命中候选待办。",
             "- `python -m runner.mobiagent.profile_pipeline.cli search --query \"美团订单反映了什么消费习惯\"` -> 命中生活服务/消费习惯画像和美团订单事件。",
@@ -153,10 +222,11 @@ def write_report(result: dict[str, Any], artifacts_dir: Path, report_path: Path)
             f"- `{artifacts_dir / 'profile.json'}`",
             f"- `{artifacts_dir / 'todos.json'}`",
             f"- `{artifacts_dir / 'search_index.json'}`",
+            f"- `{artifacts_dir / 'rag_sync.json'}`",
             "",
             "## 局限性与任务3衔接",
             "",
-            "当前闭环依赖任务1 VLM 结构化输出和截图路径，未额外调用外部 Mem0/Milvus 服务，因此可离线复现。画像均为候选画像或摘要级线索，可作为任务3主动补全、弱提醒、周期性报告生成的输入，但不应作为稳定长期偏好或敏感属性判断。",
+            "当前闭环依赖任务1 VLM 结构化输出和截图路径，并通过 Mem0 + Milvus 保存可检索记忆。画像均为候选画像或摘要级线索，可作为任务3主动补全、弱提醒、周期性报告生成的输入，但不应作为稳定长期偏好或敏感属性判断。",
         ]
     )
     report_path.parent.mkdir(parents=True, exist_ok=True)
@@ -164,11 +234,13 @@ def write_report(result: dict[str, Any], artifacts_dir: Path, report_path: Path)
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Build offline task2 profile artifacts from workflow test-runs.")
-    parser.add_argument("command", choices=["ingest", "build-profile", "search", "report"])
+    parser = argparse.ArgumentParser(description="Build task2 profile artifacts and Mem0/Milvus RAG from workflow test-runs.")
+    parser.add_argument("command", choices=["ingest", "build-profile", "search", "build-rag", "rag-search", "report"])
     parser.add_argument("--test-runs-dir", type=Path, default=default_test_runs_dir())
     parser.add_argument("--artifacts-dir", type=Path, default=default_artifacts_dir())
     parser.add_argument("--report-path", type=Path, default=default_report_path())
+    parser.add_argument("--env-file", type=Path, default=default_env_file())
+    parser.add_argument("--user-id", default=DEFAULT_USER_ID)
     parser.add_argument("--query", default="")
     parser.add_argument("--limit", type=int, default=5)
     args = parser.parse_args(argv)
@@ -182,8 +254,23 @@ def main(argv: list[str] | None = None) -> int:
         hits = search_documents(load_search_index(args.artifacts_dir), args.query, limit=args.limit)
         print(json.dumps(hits, ensure_ascii=False, indent=2))
         return 0
+    if args.command == "rag-search":
+        memory = create_memory_client(args.env_file)
+        hits = search_memories(memory, args.query, user_id=args.user_id, limit=args.limit)
+        print(json.dumps(hits, ensure_ascii=False, indent=2, default=str))
+        return 0
 
     result = build_pipeline(args.test_runs_dir, args.artifacts_dir)
+    if args.command == "build-rag":
+        memory = create_memory_client(args.env_file)
+        records = build_memory_records(result["events"], result["relations"], result["profile_items"], result["todos"])
+        inserted = sync_memory_records(memory, records, user_id=args.user_id)
+        summary = write_rag_sync_summary(inserted, records, args.artifacts_dir, args.user_id)
+        print(
+            f"rag_records={summary['record_count']} inserted={summary['inserted_count']} "
+            f"collection={summary['collection_name']}"
+        )
+        return 0
     if args.command == "report":
         write_report(result, args.artifacts_dir, args.report_path)
         print(f"wrote report: {args.report_path}")

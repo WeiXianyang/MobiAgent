@@ -48,10 +48,20 @@
 - `用户有哪些待办` -> todo:todo_4c0979fa6b score=2; event:evt_054f45dfee score=1; event:evt_85a4e04884 score=1
 - `美团订单反映了什么消费习惯` -> profile:profile_08a228c88f score=6; event:evt_f0919096fd score=4; event:evt_9b343bc458 score=2
 
+## 外部 Mem0/Milvus RAG
+
+- backend: Mem0 + Milvus
+- collection: mobiagent_legacy_20260525
+- user_id: default_user
+- inserted_count: 94
+- kinds: {"event": 13, "relation": 76, "profile": 4, "todo": 1}
+
 ## 验证命令
 
 - `python -m unittest runner.mobiagent.profile_pipeline.test_profile_pipeline` -> 单元测试覆盖采集、抽取、关系、画像、待办、检索与报告结构。
 - `python -m runner.mobiagent.profile_pipeline.cli build-profile` -> 生成事件、关系、画像、待办和检索索引。
+- `python -m runner.mobiagent.profile_pipeline.cli build-rag` -> 将事件、关系、画像和待办写入外部 Mem0/Milvus。
+- `python -m runner.mobiagent.profile_pipeline.cli rag-search --query "最近购物偏好"` -> 从外部 Mem0/Milvus RAG 召回画像和待办。
 - `python -m runner.mobiagent.profile_pipeline.cli search --query "最近购物偏好"` -> 命中购物画像和候选待办。
 - `python -m runner.mobiagent.profile_pipeline.cli search --query "用户有哪些待办"` -> 命中候选待办。
 - `python -m runner.mobiagent.profile_pipeline.cli search --query "美团订单反映了什么消费习惯"` -> 命中生活服务/消费习惯画像和美团订单事件。
@@ -63,7 +73,8 @@
 - `C:\Users\wxy\Desktop\科研考核任务\MobiAgent\runner\mobiagent\profile_pipeline\artifacts\profile.json`
 - `C:\Users\wxy\Desktop\科研考核任务\MobiAgent\runner\mobiagent\profile_pipeline\artifacts\todos.json`
 - `C:\Users\wxy\Desktop\科研考核任务\MobiAgent\runner\mobiagent\profile_pipeline\artifacts\search_index.json`
+- `C:\Users\wxy\Desktop\科研考核任务\MobiAgent\runner\mobiagent\profile_pipeline\artifacts\rag_sync.json`
 
 ## 局限性与任务3衔接
 
-当前闭环依赖任务1 VLM 结构化输出和截图路径，未额外调用外部 Mem0/Milvus 服务，因此可离线复现。画像均为候选画像或摘要级线索，可作为任务3主动补全、弱提醒、周期性报告生成的输入，但不应作为稳定长期偏好或敏感属性判断。
+当前闭环依赖任务1 VLM 结构化输出和截图路径，并通过 Mem0 + Milvus 保存可检索记忆。画像均为候选画像或摘要级线索，可作为任务3主动补全、弱提醒、周期性报告生成的输入，但不应作为稳定长期偏好或敏感属性判断。
