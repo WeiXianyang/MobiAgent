@@ -41,4 +41,6 @@ runner/mobiagent/workflow/__pycache__/
 runner/mobiagent/workflow/test-runs/
 runner/mobiagent/.env
 collect-apps-info.sh
-
+run_remote_decider_local_planner_weixin.ps1
+start_qwen3_planner_local.ps1
+start_remote_decider_tunnel.ps1

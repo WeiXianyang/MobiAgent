@@ -1,0 +1,837 @@
+[
+  {
+    "id": "evt_054f45dfee",
+    "kind": "event",
+    "text": "微信 chat_context 聊天中一方分享了B站视频，讨论工作选择，强调不考虑面子和赚钱，更看重工作少、休息多、舒服，对方回应觉得有趣。 {'topic_summary': '聊天中一方分享了B站视频，讨论工作选择，强调不考虑面子和赚钱，更看重工作少、休息多、舒服，对方回应觉得有趣。', 'contains_today_chat': True, 'sensitive_raw_text_retained': False}",
+    "source_event_ids": [
+      "evt_054f45dfee"
+    ]
+  },
+  {
+    "id": "evt_bfb6faa2db",
+    "kind": "event",
+    "text": "微信 chat_context 聊天中一方分享了B站视频，内容涉及笑到痛苦但评论区仍在加料，另一方回应并分享了另一条B站视频，内容为“一看属性咋这么垃圾”，同时讨论了学弟学妹、分流结果和大一大二打竞赛等话题。 {'topic_summary': '聊天中一方分享了B站视频，内容涉及笑到痛苦但评论区仍在加料，另一方回应并分享了另一条B站视频，内容为“一看属性咋这么垃圾”，同时讨论了学弟学妹、分流结果和大一大二打竞赛等话题。', 'contains_today_chat': True, 'sensitive_raw_text_retained': False}",
+    "source_event_ids": [
+      "evt_bfb6faa2db"
+    ]
+  },
+  {
+    "id": "evt_02a4f3fb05",
+    "kind": "event",
+    "text": "微信 chat_context 聊天双方讨论了应届生就业压力大、环境拥挤、未来迷茫等问题，一方建议回归田园或当陶渊明，另一方则调侃社会性死亡和承受他人诋毁，最后以‘没毛’和‘学弟学妹卷的一批’作结。 {'topic_summary': '聊天双方讨论了应届生就业压力大、环境拥挤、未来迷茫等问题，一方建议回归田园或当陶渊明，另一方则调侃社会性死亡和承受他人诋毁，最后以‘没毛’和‘学弟学妹卷的一批’作结。', 'contains_today_chat': True, 'sensitive_raw_text_retained': False}",
+    "source_event_ids": [
+      "evt_02a4f3fb05"
+    ]
+  },
+  {
+    "id": "evt_2e1ecf4ae7",
+    "kind": "event",
+    "text": "微信 chat_context 聊天内容围绕对象介绍、博士圈内互相介绍、以及分享一个B站视频链接展开，最后提及对方现在在华侨大学当教授。 {'topic_summary': '聊天内容围绕对象介绍、博士圈内互相介绍、以及分享一个B站视频链接展开，最后提及对方现在在华侨大学当教授。', 'contains_today_chat': True, 'sensitive_raw_text_retained': False}",
+    "source_event_ids": [
+      "evt_2e1ecf4ae7"
+    ]
+  },
+  {
+    "id": "evt_9b343bc458",
+    "kind": "event",
+    "text": "微信 chat_context 聊天中一方分享了关于表哥（985高校老师）的困境，对方表示难以理解，并对比了表哥当年读博时的优越条件，感叹现在也这么艰难。 {'topic_summary': '聊天中一方分享了关于表哥（985高校老师）的困境，对方表示难以理解，并对比了表哥当年读博时的优越条件，感叹现在也这么艰难。', 'contains_today_chat': True, 'sensitive_raw_text_retained': False}",
+    "source_event_ids": [
+      "evt_9b343bc458"
+    ]
+  },
+  {
+    "id": "evt_24c64970bb",
+    "kind": "event",
+    "text": "微信 chat_context 聊天内容围绕上海985高校录取、BYD导师竞争激烈、刘海明和孔令波的处境展开，一方质疑观点，另一方表示难以理解。 {'topic_summary': '聊天内容围绕上海985高校录取、BYD导师竞争激烈、刘海明和孔令波的处境展开，一方质疑观点，另一方表示难以理解。', 'contains_today_chat': True, 'sensitive_raw_text_retained': False}",
+    "source_event_ids": [
+      "evt_24c64970bb"
+    ]
+  },
+  {
+    "id": "evt_41876e76ea",
+    "kind": "event",
+    "text": "微信 chat_context 聊天中一方询问能否削弱1000米跑的满分标准，另一方回复了关于985高校老师因项目拉不到而靠老婆生活的情况，并附上了B站视频链接。 {'topic_summary': '聊天中一方询问能否削弱1000米跑的满分标准，另一方回复了关于985高校老师因项目拉不到而靠老婆生活的情况，并附上了B站视频链接。', 'contains_today_chat': True, 'sensitive_raw_text_retained': False}",
+    "source_event_ids": [
+      "evt_41876e76ea"
+    ]
+  },
+  {
+    "id": "evt_1d61ace426",
+    "kind": "event",
+    "text": "微信 chat_context 聊天中一方分享了跑步后的体测成绩截图，称这是‘最好的一次’，并表示‘全靠意志力’，另一方则调侃‘体育生这一块’和‘xs wl’。 {'topic_summary': '聊天中一方分享了跑步后的体测成绩截图，称这是‘最好的一次’，并表示‘全靠意志力’，另一方则调侃‘体育生这一块’和‘xs wl’。', 'contains_today_chat': True, 'sensitive_raw_text_retained': False}",
+    "source_event_ids": [
+      "evt_1d61ace426"
+    ]
+  },
+  {
+    "id": "evt_18ca147de5",
+    "kind": "event",
+    "text": "微信 chat_context 聊天双方讨论身体状况，一方表示可能在10分钟左右能恢复，另一方则表达恐惧和无助，提到工作人员已离开、想喝水但无法到达、担心下一秒失去意识，对方鼓励活着就坚持。 {'topic_summary': '聊天双方讨论身体状况，一方表示可能在10分钟左右能恢复，另一方则表达恐惧和无助，提到工作人员已离开、想喝水但无法到达、担心下一秒失去意识，对方鼓励活着就坚持。', 'contains_today_chat': True, 'sensitive_raw_text_retained': False}",
+    "source_event_ids": [
+      "evt_18ca147de5"
+    ]
+  },
+  {
+    "id": "evt_85a4e04884",
+    "kind": "event",
+    "text": "微信 chat_context 聊天中一方表示自己每十分钟发信息，感觉要死了，对方则安慰其先走、别玩手机，称10分钟左右能恢复正常，另一方则表示这里一个人也没有了。 {'topic_summary': '聊天中一方表示自己每十分钟发信息，感觉要死了，对方则安慰其先走、别玩手机，称10分钟左右能恢复正常，另一方则表示这里一个人也没有了。', 'contains_today_chat': True, 'sensitive_raw_text_retained': False}",
+    "source_event_ids": [
+      "evt_85a4e04884"
+    ]
+  },
+  {
+    "id": "evt_df0c196d14",
+    "kind": "event",
+    "text": "小红书 content_history_state 当前浏览记录页面显示无任何浏览记录，页面为空状态。 {'history_status': 'empty', 'page_type': '浏览记录', 'content_items': [], 'interest_tags': []}",
+    "source_event_ids": [
+      "evt_df0c196d14"
+    ]
+  },
+  {
+    "id": "evt_f0919096fd",
+    "kind": "event",
+    "text": "美团 order_record 美团全部订单页面，显示已完成的骑行订单和外卖订单。 {'merchant_or_service': ['单车', '津卫·天津煎饼果子(北京沸腾美食)', '鱼你在一起'], 'price_signal': ['¥1.5', '¥22.5', '共3件'], 'order_status': ['已完成', '已完成', '已完成'], 'service_type': ['骑行', '外卖'], 'location_signal': 'unknown'}",
+    "source_event_ids": [
+      "evt_f0919096fd"
+    ]
+  },
+  {
+    "id": "evt_a615c4ef78",
+    "kind": "event",
+    "text": "淘宝 shopping_browse 当前截图商品浏览摘要 {'product_categories': ['建材', '护肤品'], 'brand_or_shop_signal': ['沪心有业', '官方'], 'price_signal': ['¥3.02', '¥13.4']}",
+    "source_event_ids": [
+      "evt_a615c4ef78"
+    ]
+  },
+  {
+    "id": "rel_131399a866",
+    "kind": "relation",
+    "text": "before 微信 event 3.iter1.2 happened before 3.iter2.2.",
+    "source_event_ids": [
+      "evt_054f45dfee",
+      "evt_bfb6faa2db"
+    ]
+  },
+  {
+    "id": "rel_ca649f4974",
+    "kind": "relation",
+    "text": "after 微信 event 3.iter2.2 happened after 3.iter1.2.",
+    "source_event_ids": [
+      "evt_054f45dfee",
+      "evt_bfb6faa2db"
+    ]
+  },
+  {
+    "id": "rel_cf58a8b193",
+    "kind": "relation",
+    "text": "before 微信 event 3.iter2.2 happened before 3.iter3.2.",
+    "source_event_ids": [
+      "evt_bfb6faa2db",
+      "evt_02a4f3fb05"
+    ]
+  },
+  {
+    "id": "rel_c6d241b4b5",
+    "kind": "relation",
+    "text": "after 微信 event 3.iter3.2 happened after 3.iter2.2.",
+    "source_event_ids": [
+      "evt_bfb6faa2db",
+      "evt_02a4f3fb05"
+    ]
+  },
+  {
+    "id": "rel_83e22bf631",
+    "kind": "relation",
+    "text": "before 微信 event 3.iter3.2 happened before 3.iter4.2.",
+    "source_event_ids": [
+      "evt_02a4f3fb05",
+      "evt_2e1ecf4ae7"
+    ]
+  },
+  {
+    "id": "rel_17f4f83fc7",
+    "kind": "relation",
+    "text": "after 微信 event 3.iter4.2 happened after 3.iter3.2.",
+    "source_event_ids": [
+      "evt_02a4f3fb05",
+      "evt_2e1ecf4ae7"
+    ]
+  },
+  {
+    "id": "rel_6a0c7fcf9b",
+    "kind": "relation",
+    "text": "before 微信 event 3.iter4.2 happened before 3.iter5.2.",
+    "source_event_ids": [
+      "evt_2e1ecf4ae7",
+      "evt_9b343bc458"
+    ]
+  },
+  {
+    "id": "rel_13917e1195",
+    "kind": "relation",
+    "text": "after 微信 event 3.iter5.2 happened after 3.iter4.2.",
+    "source_event_ids": [
+      "evt_2e1ecf4ae7",
+      "evt_9b343bc458"
+    ]
+  },
+  {
+    "id": "rel_f9e2029ddf",
+    "kind": "relation",
+    "text": "before 微信 event 3.iter5.2 happened before 3.iter6.2.",
+    "source_event_ids": [
+      "evt_9b343bc458",
+      "evt_24c64970bb"
+    ]
+  },
+  {
+    "id": "rel_8c4793bcbb",
+    "kind": "relation",
+    "text": "after 微信 event 3.iter6.2 happened after 3.iter5.2.",
+    "source_event_ids": [
+      "evt_9b343bc458",
+      "evt_24c64970bb"
+    ]
+  },
+  {
+    "id": "rel_0d19d71346",
+    "kind": "relation",
+    "text": "before 微信 event 3.iter6.2 happened before 3.iter7.2.",
+    "source_event_ids": [
+      "evt_24c64970bb",
+      "evt_41876e76ea"
+    ]
+  },
+  {
+    "id": "rel_5d9eb4c3b5",
+    "kind": "relation",
+    "text": "after 微信 event 3.iter7.2 happened after 3.iter6.2.",
+    "source_event_ids": [
+      "evt_24c64970bb",
+      "evt_41876e76ea"
+    ]
+  },
+  {
+    "id": "rel_e0b23217da",
+    "kind": "relation",
+    "text": "before 微信 event 3.iter7.2 happened before 3.iter8.2.",
+    "source_event_ids": [
+      "evt_41876e76ea",
+      "evt_1d61ace426"
+    ]
+  },
+  {
+    "id": "rel_e925e8b561",
+    "kind": "relation",
+    "text": "after 微信 event 3.iter8.2 happened after 3.iter7.2.",
+    "source_event_ids": [
+      "evt_41876e76ea",
+      "evt_1d61ace426"
+    ]
+  },
+  {
+    "id": "rel_9b72b7ffd0",
+    "kind": "relation",
+    "text": "before 微信 event 3.iter8.2 happened before 3.iter9.2.",
+    "source_event_ids": [
+      "evt_1d61ace426",
+      "evt_18ca147de5"
+    ]
+  },
+  {
+    "id": "rel_2dd1e9c332",
+    "kind": "relation",
+    "text": "after 微信 event 3.iter9.2 happened after 3.iter8.2.",
+    "source_event_ids": [
+      "evt_1d61ace426",
+      "evt_18ca147de5"
+    ]
+  },
+  {
+    "id": "rel_09b2e970a4",
+    "kind": "relation",
+    "text": "before 微信 event 3.iter9.2 happened before 3.iter10.2.",
+    "source_event_ids": [
+      "evt_18ca147de5",
+      "evt_85a4e04884"
+    ]
+  },
+  {
+    "id": "rel_ee76aa6810",
+    "kind": "relation",
+    "text": "after 微信 event 3.iter10.2 happened after 3.iter9.2.",
+    "source_event_ids": [
+      "evt_18ca147de5",
+      "evt_85a4e04884"
+    ]
+  },
+  {
+    "id": "rel_814c77d355",
+    "kind": "relation",
+    "text": "same_day Both events occurred on 2026-05-24.",
+    "source_event_ids": [
+      "evt_054f45dfee",
+      "evt_bfb6faa2db"
+    ]
+  },
+  {
+    "id": "rel_6edda409a8",
+    "kind": "relation",
+    "text": "same_day Both events occurred on 2026-05-24.",
+    "source_event_ids": [
+      "evt_054f45dfee",
+      "evt_02a4f3fb05"
+    ]
+  },
+  {
+    "id": "rel_2f8e221c24",
+    "kind": "relation",
+    "text": "same_day Both events occurred on 2026-05-24.",
+    "source_event_ids": [
+      "evt_054f45dfee",
+      "evt_2e1ecf4ae7"
+    ]
+  },
+  {
+    "id": "rel_0b6112cace",
+    "kind": "relation",
+    "text": "same_day Both events occurred on 2026-05-24.",
+    "source_event_ids": [
+      "evt_054f45dfee",
+      "evt_9b343bc458"
+    ]
+  },
+  {
+    "id": "rel_d7c08cf08e",
+    "kind": "relation",
+    "text": "same_day Both events occurred on 2026-05-24.",
+    "source_event_ids": [
+      "evt_054f45dfee",
+      "evt_24c64970bb"
+    ]
+  },
+  {
+    "id": "rel_a96b6224a6",
+    "kind": "relation",
+    "text": "same_day Both events occurred on 2026-05-24.",
+    "source_event_ids": [
+      "evt_054f45dfee",
+      "evt_41876e76ea"
+    ]
+  },
+  {
+    "id": "rel_dc56832662",
+    "kind": "relation",
+    "text": "same_day Both events occurred on 2026-05-24.",
+    "source_event_ids": [
+      "evt_054f45dfee",
+      "evt_1d61ace426"
+    ]
+  },
+  {
+    "id": "rel_7d4a235cdb",
+    "kind": "relation",
+    "text": "same_day Both events occurred on 2026-05-24.",
+    "source_event_ids": [
+      "evt_054f45dfee",
+      "evt_18ca147de5"
+    ]
+  },
+  {
+    "id": "rel_3309b2d14e",
+    "kind": "relation",
+    "text": "same_day Both events occurred on 2026-05-24.",
+    "source_event_ids": [
+      "evt_054f45dfee",
+      "evt_85a4e04884"
+    ]
+  },
+  {
+    "id": "rel_02075a7028",
+    "kind": "relation",
+    "text": "same_day Both events occurred on 2026-05-24.",
+    "source_event_ids": [
+      "evt_054f45dfee",
+      "evt_df0c196d14"
+    ]
+  },
+  {
+    "id": "rel_df1752f9f5",
+    "kind": "relation",
+    "text": "same_day Both events occurred on 2026-05-24.",
+    "source_event_ids": [
+      "evt_bfb6faa2db",
+      "evt_02a4f3fb05"
+    ]
+  },
+  {
+    "id": "rel_18359afa7d",
+    "kind": "relation",
+    "text": "same_day Both events occurred on 2026-05-24.",
+    "source_event_ids": [
+      "evt_bfb6faa2db",
+      "evt_2e1ecf4ae7"
+    ]
+  },
+  {
+    "id": "rel_be5ff8b142",
+    "kind": "relation",
+    "text": "same_day Both events occurred on 2026-05-24.",
+    "source_event_ids": [
+      "evt_bfb6faa2db",
+      "evt_9b343bc458"
+    ]
+  },
+  {
+    "id": "rel_2cbbaad928",
+    "kind": "relation",
+    "text": "same_day Both events occurred on 2026-05-24.",
+    "source_event_ids": [
+      "evt_bfb6faa2db",
+      "evt_24c64970bb"
+    ]
+  },
+  {
+    "id": "rel_b6878b856c",
+    "kind": "relation",
+    "text": "same_day Both events occurred on 2026-05-24.",
+    "source_event_ids": [
+      "evt_bfb6faa2db",
+      "evt_41876e76ea"
+    ]
+  },
+  {
+    "id": "rel_d2488303c7",
+    "kind": "relation",
+    "text": "same_day Both events occurred on 2026-05-24.",
+    "source_event_ids": [
+      "evt_bfb6faa2db",
+      "evt_1d61ace426"
+    ]
+  },
+  {
+    "id": "rel_d2e3b82646",
+    "kind": "relation",
+    "text": "same_day Both events occurred on 2026-05-24.",
+    "source_event_ids": [
+      "evt_bfb6faa2db",
+      "evt_18ca147de5"
+    ]
+  },
+  {
+    "id": "rel_89be1fbacf",
+    "kind": "relation",
+    "text": "same_day Both events occurred on 2026-05-24.",
+    "source_event_ids": [
+      "evt_bfb6faa2db",
+      "evt_85a4e04884"
+    ]
+  },
+  {
+    "id": "rel_602e794cb2",
+    "kind": "relation",
+    "text": "same_day Both events occurred on 2026-05-24.",
+    "source_event_ids": [
+      "evt_bfb6faa2db",
+      "evt_df0c196d14"
+    ]
+  },
+  {
+    "id": "rel_3fa51baa2d",
+    "kind": "relation",
+    "text": "same_day Both events occurred on 2026-05-24.",
+    "source_event_ids": [
+      "evt_02a4f3fb05",
+      "evt_2e1ecf4ae7"
+    ]
+  },
+  {
+    "id": "rel_87288f5a23",
+    "kind": "relation",
+    "text": "same_day Both events occurred on 2026-05-24.",
+    "source_event_ids": [
+      "evt_02a4f3fb05",
+      "evt_9b343bc458"
+    ]
+  },
+  {
+    "id": "rel_8482e8df1f",
+    "kind": "relation",
+    "text": "same_day Both events occurred on 2026-05-24.",
+    "source_event_ids": [
+      "evt_02a4f3fb05",
+      "evt_24c64970bb"
+    ]
+  },
+  {
+    "id": "rel_8c1155314d",
+    "kind": "relation",
+    "text": "same_day Both events occurred on 2026-05-24.",
+    "source_event_ids": [
+      "evt_02a4f3fb05",
+      "evt_41876e76ea"
+    ]
+  },
+  {
+    "id": "rel_32e51bf378",
+    "kind": "relation",
+    "text": "same_day Both events occurred on 2026-05-24.",
+    "source_event_ids": [
+      "evt_02a4f3fb05",
+      "evt_1d61ace426"
+    ]
+  },
+  {
+    "id": "rel_734a8e974e",
+    "kind": "relation",
+    "text": "same_day Both events occurred on 2026-05-24.",
+    "source_event_ids": [
+      "evt_02a4f3fb05",
+      "evt_18ca147de5"
+    ]
+  },
+  {
+    "id": "rel_740c737585",
+    "kind": "relation",
+    "text": "same_day Both events occurred on 2026-05-24.",
+    "source_event_ids": [
+      "evt_02a4f3fb05",
+      "evt_85a4e04884"
+    ]
+  },
+  {
+    "id": "rel_679c0a1257",
+    "kind": "relation",
+    "text": "same_day Both events occurred on 2026-05-24.",
+    "source_event_ids": [
+      "evt_02a4f3fb05",
+      "evt_df0c196d14"
+    ]
+  },
+  {
+    "id": "rel_7fe85e3f52",
+    "kind": "relation",
+    "text": "same_day Both events occurred on 2026-05-24.",
+    "source_event_ids": [
+      "evt_2e1ecf4ae7",
+      "evt_9b343bc458"
+    ]
+  },
+  {
+    "id": "rel_c5310a2ebc",
+    "kind": "relation",
+    "text": "same_day Both events occurred on 2026-05-24.",
+    "source_event_ids": [
+      "evt_2e1ecf4ae7",
+      "evt_24c64970bb"
+    ]
+  },
+  {
+    "id": "rel_f847b7c0da",
+    "kind": "relation",
+    "text": "same_day Both events occurred on 2026-05-24.",
+    "source_event_ids": [
+      "evt_2e1ecf4ae7",
+      "evt_41876e76ea"
+    ]
+  },
+  {
+    "id": "rel_c2660179d7",
+    "kind": "relation",
+    "text": "same_day Both events occurred on 2026-05-24.",
+    "source_event_ids": [
+      "evt_2e1ecf4ae7",
+      "evt_1d61ace426"
+    ]
+  },
+  {
+    "id": "rel_e3d28ae6d8",
+    "kind": "relation",
+    "text": "same_day Both events occurred on 2026-05-24.",
+    "source_event_ids": [
+      "evt_2e1ecf4ae7",
+      "evt_18ca147de5"
+    ]
+  },
+  {
+    "id": "rel_48cede7027",
+    "kind": "relation",
+    "text": "same_day Both events occurred on 2026-05-24.",
+    "source_event_ids": [
+      "evt_2e1ecf4ae7",
+      "evt_85a4e04884"
+    ]
+  },
+  {
+    "id": "rel_3414a709b7",
+    "kind": "relation",
+    "text": "same_day Both events occurred on 2026-05-24.",
+    "source_event_ids": [
+      "evt_2e1ecf4ae7",
+      "evt_df0c196d14"
+    ]
+  },
+  {
+    "id": "rel_1b6c05c610",
+    "kind": "relation",
+    "text": "same_day Both events occurred on 2026-05-24.",
+    "source_event_ids": [
+      "evt_9b343bc458",
+      "evt_24c64970bb"
+    ]
+  },
+  {
+    "id": "rel_41475920cd",
+    "kind": "relation",
+    "text": "same_day Both events occurred on 2026-05-24.",
+    "source_event_ids": [
+      "evt_9b343bc458",
+      "evt_41876e76ea"
+    ]
+  },
+  {
+    "id": "rel_4b72cc7eda",
+    "kind": "relation",
+    "text": "same_day Both events occurred on 2026-05-24.",
+    "source_event_ids": [
+      "evt_9b343bc458",
+      "evt_1d61ace426"
+    ]
+  },
+  {
+    "id": "rel_fc171e2a64",
+    "kind": "relation",
+    "text": "same_day Both events occurred on 2026-05-24.",
+    "source_event_ids": [
+      "evt_9b343bc458",
+      "evt_18ca147de5"
+    ]
+  },
+  {
+    "id": "rel_38d49f9eae",
+    "kind": "relation",
+    "text": "same_day Both events occurred on 2026-05-24.",
+    "source_event_ids": [
+      "evt_9b343bc458",
+      "evt_85a4e04884"
+    ]
+  },
+  {
+    "id": "rel_56f0016899",
+    "kind": "relation",
+    "text": "same_day Both events occurred on 2026-05-24.",
+    "source_event_ids": [
+      "evt_9b343bc458",
+      "evt_df0c196d14"
+    ]
+  },
+  {
+    "id": "rel_7535fcf092",
+    "kind": "relation",
+    "text": "same_day Both events occurred on 2026-05-24.",
+    "source_event_ids": [
+      "evt_24c64970bb",
+      "evt_41876e76ea"
+    ]
+  },
+  {
+    "id": "rel_3cb6be4ed4",
+    "kind": "relation",
+    "text": "same_day Both events occurred on 2026-05-24.",
+    "source_event_ids": [
+      "evt_24c64970bb",
+      "evt_1d61ace426"
+    ]
+  },
+  {
+    "id": "rel_3b914e80cd",
+    "kind": "relation",
+    "text": "same_day Both events occurred on 2026-05-24.",
+    "source_event_ids": [
+      "evt_24c64970bb",
+      "evt_18ca147de5"
+    ]
+  },
+  {
+    "id": "rel_735dec8a49",
+    "kind": "relation",
+    "text": "same_day Both events occurred on 2026-05-24.",
+    "source_event_ids": [
+      "evt_24c64970bb",
+      "evt_85a4e04884"
+    ]
+  },
+  {
+    "id": "rel_389e4f455c",
+    "kind": "relation",
+    "text": "same_day Both events occurred on 2026-05-24.",
+    "source_event_ids": [
+      "evt_24c64970bb",
+      "evt_df0c196d14"
+    ]
+  },
+  {
+    "id": "rel_217de3e4a5",
+    "kind": "relation",
+    "text": "same_day Both events occurred on 2026-05-24.",
+    "source_event_ids": [
+      "evt_41876e76ea",
+      "evt_1d61ace426"
+    ]
+  },
+  {
+    "id": "rel_2bf5c03ff8",
+    "kind": "relation",
+    "text": "same_day Both events occurred on 2026-05-24.",
+    "source_event_ids": [
+      "evt_41876e76ea",
+      "evt_18ca147de5"
+    ]
+  },
+  {
+    "id": "rel_ecb4c30913",
+    "kind": "relation",
+    "text": "same_day Both events occurred on 2026-05-24.",
+    "source_event_ids": [
+      "evt_41876e76ea",
+      "evt_85a4e04884"
+    ]
+  },
+  {
+    "id": "rel_fefb76bbcf",
+    "kind": "relation",
+    "text": "same_day Both events occurred on 2026-05-24.",
+    "source_event_ids": [
+      "evt_41876e76ea",
+      "evt_df0c196d14"
+    ]
+  },
+  {
+    "id": "rel_929eecf0ec",
+    "kind": "relation",
+    "text": "same_day Both events occurred on 2026-05-24.",
+    "source_event_ids": [
+      "evt_1d61ace426",
+      "evt_18ca147de5"
+    ]
+  },
+  {
+    "id": "rel_762eed73d2",
+    "kind": "relation",
+    "text": "same_day Both events occurred on 2026-05-24.",
+    "source_event_ids": [
+      "evt_1d61ace426",
+      "evt_85a4e04884"
+    ]
+  },
+  {
+    "id": "rel_c474d49959",
+    "kind": "relation",
+    "text": "same_day Both events occurred on 2026-05-24.",
+    "source_event_ids": [
+      "evt_1d61ace426",
+      "evt_df0c196d14"
+    ]
+  },
+  {
+    "id": "rel_7f277830d5",
+    "kind": "relation",
+    "text": "same_day Both events occurred on 2026-05-24.",
+    "source_event_ids": [
+      "evt_18ca147de5",
+      "evt_85a4e04884"
+    ]
+  },
+  {
+    "id": "rel_499f50f888",
+    "kind": "relation",
+    "text": "same_day Both events occurred on 2026-05-24.",
+    "source_event_ids": [
+      "evt_18ca147de5",
+      "evt_df0c196d14"
+    ]
+  },
+  {
+    "id": "rel_25abfe3a9a",
+    "kind": "relation",
+    "text": "same_day Both events occurred on 2026-05-24.",
+    "source_event_ids": [
+      "evt_85a4e04884",
+      "evt_df0c196d14"
+    ]
+  },
+  {
+    "id": "rel_eefd7b5268",
+    "kind": "relation",
+    "text": "same_day Both events occurred on 2026-05-25.",
+    "source_event_ids": [
+      "evt_f0919096fd",
+      "evt_a615c4ef78"
+    ]
+  },
+  {
+    "id": "rel_3b27c09932",
+    "kind": "relation",
+    "text": "behavior_causal Empty browsing history prevents a reliable content-interest inference.",
+    "source_event_ids": [
+      "evt_df0c196d14"
+    ]
+  },
+  {
+    "id": "rel_87dc66012e",
+    "kind": "relation",
+    "text": "spatial Location evidence for this order record is unknown.",
+    "source_event_ids": [
+      "evt_f0919096fd"
+    ]
+  },
+  {
+    "id": "profile_9ff02ea2b1",
+    "kind": "profile",
+    "text": "沟通/社交线索 微信聊天保留10条摘要级社交上下文，不扩散原始聊天文本。",
+    "source_event_ids": [
+      "evt_054f45dfee",
+      "evt_bfb6faa2db",
+      "evt_02a4f3fb05",
+      "evt_2e1ecf4ae7",
+      "evt_9b343bc458",
+      "evt_24c64970bb",
+      "evt_41876e76ea",
+      "evt_1d61ace426",
+      "evt_18ca147de5",
+      "evt_85a4e04884"
+    ]
+  },
+  {
+    "id": "profile_9e483e69f6",
+    "kind": "profile",
+    "text": "内容兴趣 小红书浏览记录页面为空，当前不能据此推断内容兴趣。",
+    "source_event_ids": [
+      "evt_df0c196d14"
+    ]
+  },
+  {
+    "id": "profile_08a228c88f",
+    "kind": "profile",
+    "text": "生活服务/消费习惯 存在骑行,外卖消费记录；订单状态信号为已完成,已完成,已完成。",
+    "source_event_ids": [
+      "evt_f0919096fd"
+    ]
+  },
+  {
+    "id": "profile_2e2f381840",
+    "kind": "profile",
+    "text": "购物偏好 候选购物偏好：近期浏览过建材,护肤品；价格信号为¥3.02,¥13.4。",
+    "source_event_ids": [
+      "evt_a615c4ef78"
+    ]
+  },
+  {
+    "id": "todo_4c0979fa6b",
+    "kind": "todo",
+    "text": "待办 购物 复查近期购物需求并进行比价 淘宝足迹只证明近期浏览，适合生成弱提醒而不是长期偏好结论。",
+    "source_event_ids": [
+      "evt_a615c4ef78"
+    ]
+  }
+]
