@@ -6,8 +6,6 @@ import time
 from pathlib import Path
 from typing import Any
 
-from dotenv import load_dotenv
-
 from .schemas import ProfileItem, Relation, TodoItem, UserEvent
 
 
@@ -62,6 +60,8 @@ def create_memory_client(env_file: Path | str | None = None) -> Any:
     os.environ.setdefault("TRANSFORMERS_NO_TF", "1")
     os.environ.setdefault("USE_TF", "0")
     os.environ.setdefault("PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION", "python")
+    from dotenv import load_dotenv
+
     load_dotenv(env_file or default_env_file())
 
     from mem0 import Memory
@@ -83,7 +83,7 @@ def build_memory_records(
     events: list[UserEvent],
     relations: list[Relation],
     profile_items: list[ProfileItem],
-    todos: list[TodoItem],
+    service_opportunities: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
     for event in events:
@@ -130,16 +130,20 @@ def build_memory_records(
         )
         records.append({"text": f"用户画像 {item.category}: {item.claim}", "metadata": metadata})
 
-    for todo in todos:
-        metadata = _base_metadata("todo", todo.todo_id, todo.source_event_ids)
+    for opportunity in service_opportunities:
+        metadata = _base_metadata(
+            "service_opportunity",
+            str(opportunity["opportunity_id"]),
+            [str(item) for item in opportunity.get("source_event_ids", [])],
+        )
         metadata.update(
             {
-                "priority": todo.priority,
-                "due_time": todo.due_time,
-                "status": todo.status,
+                "priority": opportunity.get("priority"),
+                "status": opportunity.get("status"),
+                "requires_user_confirmation": opportunity.get("requires_user_confirmation", True),
             }
         )
-        records.append({"text": f"待办 {todo.title}: {todo.reason}", "metadata": metadata})
+        records.append({"text": f"主动服务机会 {opportunity['title']}: {opportunity['reason']}", "metadata": metadata})
     return records
 
 
@@ -189,7 +193,7 @@ def _dedupe_memories(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 def _rerank_memories(records: list[dict[str, Any]], query: str) -> list[dict[str, Any]]:
     query_tokens = _tokens(query)
-    asks_for_todo = "待办" in query or "todo" in query.lower()
+    asks_for_opportunity = "主动服务" in query or "机会" in query or "service" in query.lower()
 
     def ranking_key(record: dict[str, Any]) -> tuple[int, float]:
         memory = str(record.get("memory") or record.get("text") or "")
@@ -197,7 +201,7 @@ def _rerank_memories(records: list[dict[str, Any]], query: str) -> list[dict[str
         overlap = len(query_tokens & _tokens(memory))
         if query and query in memory:
             overlap += 3
-        if asks_for_todo and metadata.get("kind") == "todo":
+        if asks_for_opportunity and metadata.get("kind") == "service_opportunity":
             overlap += 10
         vector_score = record.get("score")
         score_value = float(vector_score) if isinstance(vector_score, (int, float)) else 999.0
@@ -208,7 +212,7 @@ def _rerank_memories(records: list[dict[str, Any]], query: str) -> list[dict[str
 
 def search_memories(memory: Any, query: str, user_id: str = DEFAULT_USER_ID, limit: int = 5) -> list[dict[str, Any]]:
     records = normalize_memory_results(memory.search(query, user_id=user_id, limit=limit))
-    if "待办" in query or "todo" in query.lower():
+    if "主动服务" in query or "机会" in query or "service" in query.lower():
         get_all = getattr(memory, "get_all", None)
         if get_all is not None:
             records.extend(normalize_memory_results(get_all(user_id=user_id, limit=100)))

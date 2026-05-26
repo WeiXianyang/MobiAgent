@@ -13,6 +13,7 @@ from runner.mobiagent.profile_pipeline.relation import build_relations
 from runner.mobiagent.profile_pipeline.schemas import ProfileItem, Relation, TodoItem, UserEvent
 from runner.mobiagent.profile_pipeline.search import build_search_documents, search_documents
 from runner.mobiagent.profile_pipeline.cli import default_report_path, write_report
+from runner.mobiagent.profile_pipeline.cli import build_pipeline, build_service_opportunities, build_task2_coverage
 
 
 SUCCESS_RUNS = [
@@ -37,7 +38,7 @@ class FakeMemory:
         return [{"id": "mem-1", "memory": "购物偏好：近期浏览过建材", "score": 0.8}]
 
     def get_all(self, *, user_id: str, limit: int) -> list[dict]:
-        return [{"id": "mem-2", "memory": "待办 复查近期购物需求并进行比价", "metadata": {"kind": "todo"}}]
+        return [{"id": "mem-2", "memory": "主动服务机会 复查近期购物需求并进行比价", "metadata": {"kind": "service_opportunity"}}]
 
 
 def sample_event() -> UserEvent:
@@ -343,9 +344,21 @@ class ProfilePipelineTests(unittest.TestCase):
             status="candidate",
         )
 
-        records = build_memory_records([event], [relation], [profile], [todo])
+        opportunities = [
+            {
+                "opportunity_id": todo.todo_id,
+                "title": todo.title,
+                "reason": todo.reason,
+                "source_event_ids": todo.source_event_ids,
+                "priority": todo.priority,
+                "status": todo.status,
+                "requires_user_confirmation": True,
+            }
+        ]
 
-        self.assertEqual({record["metadata"]["kind"] for record in records}, {"event", "relation", "profile", "todo"})
+        records = build_memory_records([event], [relation], [profile], opportunities)
+
+        self.assertEqual({record["metadata"]["kind"] for record in records}, {"event", "relation", "profile", "service_opportunity"})
         profile_record = next(record for record in records if record["metadata"]["kind"] == "profile")
         self.assertIn("购物偏好", profile_record["text"])
         self.assertEqual(profile_record["metadata"]["source_event_ids"], [event.event_id])
@@ -365,12 +378,12 @@ class ProfilePipelineTests(unittest.TestCase):
         self.assertEqual(memory.search_calls, [{"query": "最近购物偏好", "user_id": "task2_user", "limit": 3}])
         self.assertEqual(hits[0]["memory"], "购物偏好：近期浏览过建材")
 
-    def test_todo_rag_search_enriches_with_external_mem0_records(self) -> None:
+    def test_service_opportunity_rag_search_enriches_with_external_mem0_records(self) -> None:
         memory = FakeMemory()
 
-        hits = search_memories(memory, "用户有哪些待办", user_id="task2_user", limit=1)
+        hits = search_memories(memory, "有哪些主动服务机会", user_id="task2_user", limit=1)
 
-        self.assertEqual(hits[0]["metadata"]["kind"], "todo")
+        self.assertEqual(hits[0]["metadata"]["kind"], "service_opportunity")
 
     def test_report_records_verification_commands(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -392,6 +405,7 @@ class ProfilePipelineTests(unittest.TestCase):
             events = events_from_runs(records)
             relations = build_relations(events)
             profile_items, todos = build_profile_and_todos(events, relations)
+            service_opportunities = build_service_opportunities(profile_items, todos)
             search_docs = build_search_documents(events, relations, profile_items, todos)
             report_path = temp_path / "report.md"
 
@@ -401,7 +415,7 @@ class ProfilePipelineTests(unittest.TestCase):
                     "events": events,
                     "relations": relations,
                     "profile_items": profile_items,
-                    "todos": todos,
+                    "service_opportunities": service_opportunities,
                     "search_docs": search_docs,
                 },
                 temp_path / "artifacts",
@@ -411,6 +425,179 @@ class ProfilePipelineTests(unittest.TestCase):
             report = report_path.read_text(encoding="utf-8")
         self.assertIn("## 验证命令", report)
         self.assertIn("python -m unittest runner.mobiagent.profile_pipeline.test_profile_pipeline", report)
+        self.assertIn("## 任务2达标说明", report)
+        self.assertIn("多模态数据管理", report)
+        self.assertIn("因果、时域和空域关系", report)
+        self.assertIn("候选待办/主动服务机会", report)
+        self.assertIn("不是稳定长期偏好或敏感属性判断", report)
+
+    def test_report_marks_legacy_rag_sync_as_outdated(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            temp_path = Path(temp)
+            artifacts = temp_path / "artifacts"
+            artifacts.mkdir()
+            (artifacts / "rag_sync.json").write_text(
+                json.dumps(
+                    {
+                        "backend": "Mem0 + Milvus",
+                        "collection_name": "legacy",
+                        "user_id": "default_user",
+                        "inserted_count": 1,
+                        "kinds": {"todo": 1},
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            report_path = temp_path / "report.md"
+
+            write_report(
+                {
+                    "records": [],
+                    "events": [],
+                    "relations": [],
+                    "profile_items": [],
+                    "service_opportunities": [],
+                    "search_docs": [],
+                },
+                artifacts,
+                report_path,
+            )
+
+            report = report_path.read_text(encoding="utf-8")
+
+        self.assertIn("旧版 RAG 同步摘要", report)
+        self.assertIn("service_opportunity", report)
+
+    def test_task2_coverage_reflects_missing_relations_and_rag_sync(self) -> None:
+        event = sample_event()
+        profile = ProfileItem(
+            profile_id="profile_shop",
+            category="购物偏好",
+            claim="近期浏览建材",
+            evidence_event_ids=[event.event_id],
+            confidence=0.8,
+            time_range="recent",
+            service_eligible=True,
+        )
+        opportunities = [
+            {
+                "opportunity_id": "opp_shop",
+                "kind": "profile_driven_suggestion",
+                "title": "复查近期购物需求并进行比价",
+                "reason": "淘宝足迹只证明近期浏览。",
+                "source_event_ids": [event.event_id],
+                "source_profile_ids": [profile.profile_id],
+                "priority": "low",
+                "status": "candidate",
+                "requires_user_confirmation": True,
+            }
+        ]
+
+        with tempfile.TemporaryDirectory() as temp:
+            coverage = build_task2_coverage(
+                records=[],
+                events=[event],
+                relations=[],
+                profile_items=[profile],
+                service_opportunities=opportunities,
+                artifacts_dir=Path(temp),
+            )
+
+        self.assertFalse(coverage["standards"]["causal_temporal_spatial_relations"])
+        self.assertFalse(coverage["standards"]["mem0_milvus_retrievable_memory"])
+
+    def test_task2_coverage_rejects_legacy_todo_rag_sync(self) -> None:
+        event = sample_event()
+        relation = Relation(
+            relation_id="rel_shop",
+            relation_type="behavior_causal",
+            source_event_id=event.event_id,
+            target_event_id=None,
+            description="浏览足迹可作为弱提醒证据",
+            evidence_event_ids=[event.event_id],
+            confidence=0.7,
+        )
+        profile = ProfileItem(
+            profile_id="profile_shop",
+            category="购物偏好",
+            claim="近期浏览建材",
+            evidence_event_ids=[event.event_id],
+            confidence=0.8,
+            time_range="recent",
+            service_eligible=True,
+        )
+        opportunities = [
+            {
+                "opportunity_id": "opp_shop",
+                "kind": "profile_driven_suggestion",
+                "title": "复查近期购物需求并进行比价",
+                "reason": "淘宝足迹只证明近期浏览。",
+                "source_event_ids": [event.event_id],
+                "source_profile_ids": [profile.profile_id],
+                "priority": "low",
+                "status": "candidate",
+                "requires_user_confirmation": True,
+            }
+        ]
+
+        with tempfile.TemporaryDirectory() as temp:
+            artifacts = Path(temp)
+            (artifacts / "rag_sync.json").write_text(
+                json.dumps(
+                    {
+                        "inserted_count": 4,
+                        "kinds": {"event": 1, "relation": 1, "profile": 1, "todo": 1},
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            coverage = build_task2_coverage(
+                records=[object()],
+                events=[event],
+                relations=[relation],
+                profile_items=[profile],
+                service_opportunities=opportunities,
+                artifacts_dir=artifacts,
+            )
+
+        self.assertTrue(coverage["standards"]["causal_temporal_spatial_relations"])
+        self.assertFalse(coverage["standards"]["mem0_milvus_retrievable_memory"])
+
+    def test_build_pipeline_writes_only_service_opportunities_for_profile_driven_suggestions(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            base = Path(temp)
+            run_dir = base / "20260525-024026-basic-gui-task-taobao-goal-v9"
+            run_dir.mkdir()
+            write_summary(
+                run_dir,
+                "com.taobao.taobao",
+                "淘宝",
+                {
+                    "summary": "当前截图商品浏览摘要",
+                    "product_categories": ["建材"],
+                    "brand_or_shop_signal": ["官方"],
+                    "price_signal": ["¥3.02"],
+                },
+            )
+            artifacts = base / "artifacts"
+
+            build_pipeline(base, artifacts, ["20260525-024026-basic-gui-task-taobao-goal-v9"])
+
+            opportunities = json.loads((artifacts / "service_opportunities.json").read_text(encoding="utf-8"))
+            coverage = json.loads((artifacts / "task2_coverage.json").read_text(encoding="utf-8"))
+
+        self.assertFalse((artifacts / "todos.json").exists())
+        self.assertEqual(opportunities[0]["kind"], "profile_driven_suggestion")
+        self.assertEqual(opportunities[0]["status"], "candidate")
+        self.assertNotIn("legacy_todo_id", opportunities[0])
+        self.assertIn("不是用户明确待办", opportunities[0]["safety_note"])
+        self.assertTrue(coverage["standards"]["multimodal_data_management"])
+        self.assertTrue(coverage["standards"]["useful_information_extraction"])
+        self.assertFalse(coverage["standards"]["causal_temporal_spatial_relations"])
+        self.assertTrue(coverage["standards"]["profile_and_candidate_todo_generation"])
+        self.assertEqual(coverage["safety_boundary"], "candidate_or_summary_only")
 
 
 if __name__ == "__main__":

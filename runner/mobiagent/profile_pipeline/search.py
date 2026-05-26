@@ -50,8 +50,8 @@ def build_search_documents(
         docs.append(
             {
                 "id": todo.todo_id,
-                "kind": "todo",
-                "text": f"待办 购物 {todo.title} {todo.reason}",
+                "kind": "service_opportunity",
+                "text": f"主动服务机会 画像驱动 购物 {todo.title} {todo.reason}",
                 "source_event_ids": todo.source_event_ids,
             }
         )
@@ -71,4 +71,3 @@ def search_documents(documents: list[dict[str, Any]], query: str, limit: int = 5
             item["score"] = score
             hits.append(item)
     return sorted(hits, key=lambda item: (-item["score"], item["kind"], item["id"]))[:limit]
-

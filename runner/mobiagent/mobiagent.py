@@ -12,6 +12,7 @@ import argparse
 import textwrap
 import cv2
 import sys
+import urllib.parse
 from abc import ABC, abstractmethod
 from PIL import Image, ImageDraw, ImageFont
 
@@ -346,6 +347,24 @@ grounder_model = ""
 
 # 全局偏好提取器
 preference_extractor = None
+
+
+def split_openai_base_url_and_query(base_url):
+    parsed = urllib.parse.urlsplit(str(base_url))
+    query = dict(urllib.parse.parse_qsl(parsed.query, keep_blank_values=True))
+    clean_url = urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, parsed.path.rstrip("/"), "", parsed.fragment))
+    return clean_url, query
+
+
+def create_openai_client(api_key, base_url):
+    clean_url, default_query = split_openai_base_url_and_query(base_url)
+    return OpenAI(
+        api_key=api_key,
+        base_url=clean_url,
+        default_query=default_query or None,
+    )
+
+
 def init(
     service_ip,
     decider_port,
@@ -361,18 +380,12 @@ def init(
     env_path = Path(__file__).parent / ".env"
     load_dotenv(env_path)
     api_key = os.getenv("MOBIAGENT_API_KEY", "mobiagent-key")
-    decider_client = OpenAI(
-        api_key = api_key,
-        base_url = f"http://{service_ip}:{decider_port}/v1",
-    )
-    grounder_client = OpenAI(
-        api_key = api_key,
-        base_url = f"http://{service_ip}:{grounder_port}/v1",
-    )
-    planner_client = OpenAI(
-        api_key = api_key,
-        base_url = f"http://{service_ip}:{planner_port}/v1",
-    )
+    decider_base_url = os.getenv("MOBIAGENT_DECIDER_BASE_URL", f"http://{service_ip}:{decider_port}/v1")
+    grounder_base_url = os.getenv("MOBIAGENT_GROUNDER_BASE_URL", f"http://{service_ip}:{grounder_port}/v1")
+    planner_base_url = os.getenv("MOBIAGENT_PLANNER_BASE_URL", f"http://{service_ip}:{planner_port}/v1")
+    decider_client = create_openai_client(api_key, decider_base_url)
+    grounder_client = create_openai_client(api_key, grounder_base_url)
+    planner_client = create_openai_client(api_key, planner_base_url)
 
     # Model routing stays internal to the service or environment. The CLI only
     # selects ports and protocol, which keeps the public entrypoints simpler.

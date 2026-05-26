@@ -44,3 +44,9 @@ collect-apps-info.sh
 run_remote_decider_local_planner_weixin.ps1
 start_qwen3_planner_local.ps1
 start_remote_decider_tunnel.ps1
+
+# Generated dependencies and runtime artifacts
+node_modules/
+generated_workflows/
+runner/mobiagent/profile_pipeline/artifacts/
+runner/mobiagent/proactive_service/artifacts/
