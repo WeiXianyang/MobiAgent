@@ -133,6 +133,92 @@ class PersonalMemoryCardTests(unittest.TestCase):
         self.assertEqual(cards[1].card_type, "profile")
         self.assertIn("火锅", cards[1].content)
 
+    def test_todo_and_profile_cards_with_same_source_id_do_not_collide_in_store(self) -> None:
+        profile = ProfileItem(
+            profile_id="shared",
+            category="饮食偏好",
+            claim="用户近期出现火锅聚餐相关意图。",
+            evidence_event_ids=["evt_chat_001"],
+            confidence=0.81,
+            time_range="2026-05-20/2026-05-27",
+            service_eligible=True,
+            privacy_level="derived",
+        )
+        todo = TodoItem(
+            todo_id="shared",
+            title="确认周五火锅地点",
+            reason="聊天中出现聚餐时间和食物偏好，但缺少地点。",
+            source_event_ids=["evt_chat_001"],
+            priority="high",
+            due_time="2026-05-29T18:00:00",
+            status="open",
+        )
+        cards = build_memory_cards([profile], [todo], [])
+
+        with tempfile.TemporaryDirectory() as tmp:
+            store = PersonalMemoryStore(Path(tmp) / "memory.db")
+            store.initialize()
+            store.upsert_cards(cards)
+
+            hits = store.search(AgentMemoryQuery(intent="card_lookup", text="", include_events=False, limit=10))
+
+        self.assertIn("card_todo_shared", [hit.item_id for hit in hits])
+        self.assertIn("card_profile_shared", [hit.item_id for hit in hits])
+
+    def test_weekly_summary_card_is_stable_for_reordered_inputs(self) -> None:
+        profiles = [
+            ProfileItem(
+                profile_id="profile_b",
+                category="饮食偏好",
+                claim="用户近期出现火锅聚餐相关意图。",
+                evidence_event_ids=["evt_chat_002"],
+                confidence=0.81,
+                time_range="2026-05-20/2026-05-27",
+                service_eligible=True,
+                privacy_level="derived",
+            ),
+            ProfileItem(
+                profile_id="profile_a",
+                category="购物偏好",
+                claim="用户近期浏览建材商品。",
+                evidence_event_ids=["evt_shop_001"],
+                confidence=0.78,
+                time_range="2026-05-20/2026-05-27",
+                service_eligible=True,
+                privacy_level="derived",
+            ),
+        ]
+        todos = [
+            TodoItem(
+                todo_id="todo_b",
+                title="确认周五火锅地点",
+                reason="聊天中出现聚餐时间和食物偏好，但缺少地点。",
+                source_event_ids=["evt_chat_002"],
+                priority="high",
+                due_time="2026-05-29T18:00:00",
+                status="open",
+            ),
+            TodoItem(
+                todo_id="todo_a",
+                title="比较建材价格",
+                reason="购物浏览中出现建材需求。",
+                source_event_ids=["evt_shop_001"],
+                priority="medium",
+                due_time=None,
+                status="open",
+            ),
+        ]
+
+        weekly = [card for card in build_memory_cards(profiles, todos, []) if card.card_type == "weekly_summary"][0]
+        reversed_weekly = [
+            card
+            for card in build_memory_cards(list(reversed(profiles)), list(reversed(todos)), [])
+            if card.card_type == "weekly_summary"
+        ][0]
+
+        self.assertEqual(weekly.card_id, reversed_weekly.card_id)
+        self.assertEqual(weekly.content, reversed_weekly.content)
+
 
 class PersonalMemoryIngestTests(unittest.TestCase):
     def test_profile_event_converts_to_normalized_event(self) -> None:

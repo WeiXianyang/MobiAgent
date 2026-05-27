@@ -20,7 +20,7 @@ def build_memory_cards(
     for todo in sorted(todos, key=lambda item: PRIORITY_SCORE.get(item.priority, 0.5), reverse=True):
         cards.append(
             MemoryCard(
-                card_id=f"card_{todo.todo_id}",
+                card_id=f"card_todo_{todo.todo_id}",
                 card_type="todo",
                 title=todo.title,
                 content=f"{todo.reason} due_time={todo.due_time or 'none'}",
@@ -34,7 +34,7 @@ def build_memory_cards(
     for profile in sorted(profiles, key=lambda item: item.confidence, reverse=True):
         cards.append(
             MemoryCard(
-                card_id=f"card_{profile.profile_id}",
+                card_id=f"card_profile_{profile.profile_id}",
                 card_type="profile",
                 title=profile.category,
                 content=f"{profile.claim} time_range={profile.time_range}",
@@ -70,9 +70,15 @@ def _weekly_summary_card(
     todos: list[TodoItem],
     relations: list[RelationEdge],
 ) -> MemoryCard:
-    profile_titles = "、".join(profile.category for profile in profiles[:5]) or "无画像"
-    todo_titles = "、".join(todo.title for todo in todos[:5]) or "无待办"
-    raw_key = "|".join(profile.profile_id for profile in profiles) + "|" + "|".join(todo.todo_id for todo in todos)
+    canonical_profiles = sorted(profiles, key=lambda profile: profile.profile_id)
+    canonical_todos = sorted(todos, key=lambda todo: todo.todo_id)
+    profile_titles = "、".join(profile.category for profile in canonical_profiles[:5]) or "无画像"
+    todo_titles = "、".join(todo.title for todo in canonical_todos[:5]) or "无待办"
+    raw_key = (
+        "|".join(profile.profile_id for profile in canonical_profiles)
+        + "|"
+        + "|".join(todo.todo_id for todo in canonical_todos)
+    )
     digest = hashlib.sha1(raw_key.encode("utf-8")).hexdigest()[:8]
     event_ids = sorted({event_id for profile in profiles for event_id in profile.evidence_event_ids})
     event_ids.extend(event_id for todo in todos for event_id in todo.source_event_ids if event_id not in event_ids)
