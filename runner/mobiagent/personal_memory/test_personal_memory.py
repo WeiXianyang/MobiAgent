@@ -694,5 +694,20 @@ class PersonalMemoryPlannerTests(unittest.TestCase):
         self.assertTrue(query.semantic_fallback)
 
 
+from runner.mobiagent.personal_memory.cli import build_parser
+
+
+class PersonalMemoryCliTests(unittest.TestCase):
+    def test_cli_parser_accepts_build_and_search(self) -> None:
+        parser = build_parser()
+        build_args = parser.parse_args(["build", "--db", "memory.db", "--events", "events.json"])
+        search_args = parser.parse_args(["search", "--db", "memory.db", "--query", "过去一周画像"])
+
+        self.assertEqual(build_args.command, "build")
+        self.assertEqual(build_args.db, "memory.db")
+        self.assertEqual(search_args.command, "search")
+        self.assertEqual(search_args.query, "过去一周画像")
+
+
 if __name__ == "__main__":
     unittest.main()
