@@ -67,7 +67,8 @@ def relations_from_profile_relations(relations: list[Relation]) -> list[Relation
 
 
 def _artifact_kind(path: str) -> str:
-    suffix = Path(path).suffix.lower()
+    uri_path = path.split("#", 1)[0].split("?", 1)[0]
+    suffix = Path(uri_path).suffix.lower()
     if suffix in {".png", ".jpg", ".jpeg", ".webp"}:
         return "screenshot"
     if suffix == ".json":

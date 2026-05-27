@@ -154,7 +154,13 @@ class PersonalMemoryIngestTests(unittest.TestCase):
             event_time="2026-05-27T10:00:00",
             source_run="run_files",
             source_step="1",
-            evidence_paths=["archive/notes.md.backup", "runs/data.json"],
+            evidence_paths=[
+                "archive/notes.md.backup",
+                "runs/data.json",
+                "runs/run_summary.json#steps.2.output.structured_output",
+                "runs/screen.png#bbox",
+                "runs/screen.jpg?x=1",
+            ],
             event_type="file_context",
             summary="用户查看文件",
             entities={},
@@ -164,7 +170,10 @@ class PersonalMemoryIngestTests(unittest.TestCase):
 
         _, artifacts = events_from_profile_events([source])
 
-        self.assertEqual([artifact.kind for artifact in artifacts], ["reference", "json"])
+        self.assertEqual(
+            [artifact.kind for artifact in artifacts],
+            ["reference", "json", "json", "screenshot", "screenshot"],
+        )
 
 
 def _sample_artifact() -> RawArtifact:
