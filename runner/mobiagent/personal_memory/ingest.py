@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from runner.mobiagent.profile_pipeline.schemas import Relation, UserEvent
 
 from .schemas import NormalizedEvent, RawArtifact, RelationEdge
@@ -65,11 +67,11 @@ def relations_from_profile_relations(relations: list[Relation]) -> list[Relation
 
 
 def _artifact_kind(path: str) -> str:
-    lower = path.lower()
-    if lower.endswith((".png", ".jpg", ".jpeg", ".webp")):
+    suffix = Path(path).suffix.lower()
+    if suffix in {".png", ".jpg", ".jpeg", ".webp"}:
         return "screenshot"
-    if ".json" in lower:
+    if suffix == ".json":
         return "json"
-    if ".md" in lower or ".txt" in lower:
+    if suffix in {".md", ".txt"}:
         return "text"
     return "reference"

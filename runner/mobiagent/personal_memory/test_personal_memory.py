@@ -145,6 +145,27 @@ class PersonalMemoryIngestTests(unittest.TestCase):
         self.assertEqual(edges[0].relation_type, "causes")
         self.assertEqual(edges[0].target_event_id, "evt_shop_001")
 
+    def test_profile_event_artifact_kind_uses_file_extension_only(self) -> None:
+        source = UserEvent(
+            event_id="evt_files_001",
+            user_id="local_user",
+            app="文件",
+            package_name="com.android.documentsui",
+            event_time="2026-05-27T10:00:00",
+            source_run="run_files",
+            source_step="1",
+            evidence_paths=["archive/notes.md.backup", "runs/data.json"],
+            event_type="file_context",
+            summary="用户查看文件",
+            entities={},
+            confidence=0.8,
+            privacy_level="derived",
+        )
+
+        _, artifacts = events_from_profile_events([source])
+
+        self.assertEqual([artifact.kind for artifact in artifacts], ["reference", "json"])
+
 
 def _sample_artifact() -> RawArtifact:
     return RawArtifact(
