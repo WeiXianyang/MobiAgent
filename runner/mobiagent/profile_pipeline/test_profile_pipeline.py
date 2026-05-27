@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import contextlib
+import io
 import json
 import tempfile
 import unittest
 from pathlib import Path
 
+from runner.mobiagent.personal_memory.schemas import AgentMemoryQuery
+from runner.mobiagent.personal_memory.store import PersonalMemoryStore
 from runner.mobiagent.profile_pipeline.extract import events_from_runs
 from runner.mobiagent.profile_pipeline.ingest import collect_successful_runs, default_test_runs_dir
 from runner.mobiagent.profile_pipeline.mem0_rag import build_memory_records, search_memories, sync_memory_records
@@ -133,6 +137,71 @@ def append_structured_step(run_dir: Path, step_id: str, structured: dict, image_
 
 
 class ProfilePipelineTests(unittest.TestCase):
+    def test_personal_memory_command_is_registered(self) -> None:
+        from runner.mobiagent.profile_pipeline.cli import build_parser
+
+        parser = build_parser()
+        args = parser.parse_args([
+            "build-personal-memory",
+            "--events-json",
+            "events.json",
+            "--relations-json",
+            "relations.json",
+            "--db",
+            "memory.db",
+        ])
+
+        self.assertEqual(args.command, "build-personal-memory")
+        self.assertEqual(args.db, "memory.db")
+
+    def test_build_personal_memory_command_writes_searchable_store(self) -> None:
+        from runner.mobiagent.profile_pipeline.cli import main
+
+        event = sample_event()
+        relation = Relation(
+            relation_id="rel_shop_jsonl",
+            relation_type="behavior_causal",
+            source_event_id=event.event_id,
+            target_event_id=None,
+            description="浏览足迹可作为近期购物需求的弱证据",
+            evidence_event_ids=[event.event_id],
+            confidence=0.7,
+        )
+
+        with tempfile.TemporaryDirectory() as temp:
+            temp_path = Path(temp)
+            events_path = temp_path / "events.jsonl"
+            relations_path = temp_path / "relations.jsonl"
+            db_path = temp_path / "memory.db"
+            events_path.write_text(json.dumps(event.to_dict(), ensure_ascii=False) + "\n", encoding="utf-8")
+            relations_path.write_text(json.dumps(relation.to_dict(), ensure_ascii=False) + "\n", encoding="utf-8")
+
+            stdout = io.StringIO()
+            with contextlib.redirect_stdout(stdout):
+                exit_code = main([
+                    "build-personal-memory",
+                    "--events-json",
+                    str(events_path),
+                    "--relations-json",
+                    str(relations_path),
+                    "--db",
+                    str(db_path),
+                ])
+
+            payload = json.loads(stdout.getvalue())
+            db_exists = db_path.exists()
+            store = PersonalMemoryStore(db_path)
+            hits = store.search(AgentMemoryQuery(intent="test", text="建材", include_cards=False, limit=5))
+            relations = store.relation_neighborhood(event.event_id)
+
+        self.assertEqual(exit_code, 0)
+        self.assertTrue(db_exists)
+        self.assertEqual(payload["events"], 1)
+        self.assertEqual(payload["artifacts"], 1)
+        self.assertEqual(payload["relations"], 1)
+        self.assertEqual([hit.item_id for hit in hits], [event.event_id])
+        self.assertEqual([edge.relation_id for edge in relations], [relation.relation_id])
+
     def test_default_report_path_stays_inside_mobiagent_repo(self) -> None:
         repo_root = Path(__file__).resolve().parents[3]
         self.assertTrue(default_report_path().is_relative_to(repo_root))

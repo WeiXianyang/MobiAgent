@@ -6,6 +6,10 @@ import os
 from pathlib import Path
 from typing import Any
 
+from runner.mobiagent.personal_memory.ingest import events_from_profile_events, relations_from_profile_relations
+from runner.mobiagent.personal_memory.store import PersonalMemoryStore
+from runner.mobiagent.profile_pipeline.schemas import Relation, UserEvent
+
 from .extract import events_from_runs
 from .ingest import DEFAULT_SUCCESS_RUNS, collect_successful_runs, default_test_runs_dir
 from .mem0_rag import (
@@ -37,6 +41,18 @@ def _write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
 def _write_json(path: Path, data: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _load_records(path: Path) -> list[dict[str, Any]]:
+    text = path.read_text(encoding="utf-8").strip()
+    if not text:
+        return []
+    if text[0] == "[":
+        records = json.loads(text)
+        if not isinstance(records, list):
+            raise ValueError(f"expected JSON array in {path}")
+        return records
+    return [json.loads(line) for line in text.splitlines() if line.strip()]
 
 
 def build_pipeline(test_runs_dir: Path, artifacts_dir: Path, run_ids: list[str] = DEFAULT_SUCCESS_RUNS) -> dict[str, Any]:
@@ -373,9 +389,20 @@ def write_report(result: dict[str, Any], artifacts_dir: Path, report_path: Path)
     report_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def main(argv: list[str] | None = None) -> int:
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Build task2 profile artifacts and Mem0/Milvus RAG from workflow test-runs.")
-    parser.add_argument("command", choices=["ingest", "build-profile", "search", "build-rag", "rag-search", "report"])
+    parser.add_argument(
+        "command",
+        choices=[
+            "ingest",
+            "build-profile",
+            "search",
+            "build-rag",
+            "rag-search",
+            "report",
+            "build-personal-memory",
+        ],
+    )
     parser.add_argument("--test-runs-dir", type=Path, default=default_test_runs_dir())
     parser.add_argument("--artifacts-dir", type=Path, default=default_artifacts_dir())
     parser.add_argument("--report-path", type=Path, default=default_report_path())
@@ -383,7 +410,52 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--user-id", default=DEFAULT_USER_ID)
     parser.add_argument("--query", default="")
     parser.add_argument("--limit", type=int, default=5)
+    parser.add_argument("--events-json", type=Path)
+    parser.add_argument("--relations-json", type=Path)
+    parser.add_argument("--db")
+    return parser
+
+
+def _cmd_build_personal_memory(args: argparse.Namespace) -> int:
+    if args.events_json is None:
+        raise SystemExit("--events-json is required for build-personal-memory")
+    if args.db is None:
+        raise SystemExit("--db is required for build-personal-memory")
+
+    raw_events = _load_records(args.events_json)
+    events = [UserEvent(**item) for item in raw_events]
+    normalized_events, artifacts = events_from_profile_events(events)
+
+    relations = []
+    if args.relations_json:
+        raw_relations = _load_records(args.relations_json)
+        relations = relations_from_profile_relations([Relation(**item) for item in raw_relations])
+
+    store = PersonalMemoryStore(Path(args.db))
+    store.initialize()
+    store.upsert_artifacts(artifacts)
+    store.upsert_events(normalized_events)
+    store.upsert_relations(relations)
+    print(
+        json.dumps(
+            {
+                "db": str(args.db),
+                "events": len(normalized_events),
+                "artifacts": len(artifacts),
+                "relations": len(relations),
+            },
+            ensure_ascii=False,
+        )
+    )
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
     args = parser.parse_args(argv)
+
+    if args.command == "build-personal-memory":
+        return _cmd_build_personal_memory(args)
 
     if args.command == "ingest":
         records = collect_successful_runs(args.test_runs_dir)
