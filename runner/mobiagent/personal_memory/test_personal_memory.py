@@ -15,6 +15,7 @@ from runner.mobiagent.personal_memory.schemas import (
 from runner.mobiagent.personal_memory.cards import build_memory_cards
 from runner.mobiagent.personal_memory.ingest import events_from_profile_events, relations_from_profile_relations
 from runner.mobiagent.personal_memory.store import PersonalMemoryStore
+from runner.mobiagent.personal_memory.vector import LexicalSemanticMemory
 from runner.mobiagent.profile_pipeline.schemas import ProfileItem, Relation, TodoItem, UserEvent
 
 
@@ -529,6 +530,34 @@ class PersonalMemoryRelationTests(unittest.TestCase):
                     "rel_root_to_mid_b",
                 ],
             )
+
+
+class PersonalMemoryVectorFallbackTests(unittest.TestCase):
+    def test_lexical_semantic_memory_returns_fuzzy_hits_without_remote_embedding(self) -> None:
+        memory = LexicalSemanticMemory()
+        memory.index(
+            [
+                MemoryHit(
+                    item_id="evt_food",
+                    layer="event",
+                    text="朋友约周五吃火锅并讨论地点",
+                    score=0.8,
+                    event_ids=["evt_food"],
+                ),
+                MemoryHit(
+                    item_id="evt_bike",
+                    layer="event",
+                    text="用户查看共享单车订单",
+                    score=0.8,
+                    event_ids=["evt_bike"],
+                ),
+            ]
+        )
+
+        hits = memory.search("火锅 地点", limit=1)
+
+        self.assertEqual(hits[0].item_id, "evt_food")
+        self.assertEqual(hits[0].metadata["semantic_backend"], "lexical")
 
 
 if __name__ == "__main__":
