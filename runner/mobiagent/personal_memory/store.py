@@ -266,6 +266,8 @@ class PersonalMemoryStore:
         with self._connect() as conn:
             if query.include_events:
                 hits.extend(self._search_events(conn, query))
+            if query.include_relations:
+                hits.extend(self._search_relations(conn, query))
             if query.include_cards:
                 hits.extend(self._search_cards(conn, query))
 
@@ -359,6 +361,51 @@ class PersonalMemoryStore:
                         "entities": json.loads(row["entities_json"]),
                         "artifact_ids": json.loads(row["artifact_ids_json"]),
                         "task_id": row["task_id"],
+                        "confidence": row["confidence"],
+                    },
+                )
+            )
+        return hits
+
+    def _search_relations(self, conn: sqlite3.Connection, query: AgentMemoryQuery) -> list[MemoryHit]:
+        rows = conn.execute(
+            """
+            SELECT relation_id, relation_type, source_event_id, target_event_id,
+                   description, confidence, evidence_event_ids_json
+            FROM relations
+            ORDER BY confidence DESC, relation_id
+            """
+        ).fetchall()
+        linked_event_ids = _matching_event_ids(conn, query) if _has_linked_event_filters(query) else None
+        require_text_match = bool(query.text) and linked_event_ids is None
+        hits: list[MemoryHit] = []
+        for row in rows:
+            evidence_event_ids = json.loads(row["evidence_event_ids_json"])
+            relation_event_ids = {
+                row["source_event_id"],
+                row["target_event_id"],
+                *evidence_event_ids,
+            }
+            relation_event_ids.discard(None)
+            if linked_event_ids is not None and not linked_event_ids.intersection(relation_event_ids):
+                continue
+            score = _relation_score(row, query.text)
+            if require_text_match and score <= 0:
+                continue
+            if score <= 0:
+                score = float(row["confidence"])
+            hits.append(
+                MemoryHit(
+                    item_id=row["relation_id"],
+                    layer="relation",
+                    text=row["description"],
+                    score=score,
+                    event_ids=evidence_event_ids,
+                    relation_ids=[row["relation_id"]],
+                    metadata={
+                        "relation_type": row["relation_type"],
+                        "source_event_id": row["source_event_id"],
+                        "target_event_id": row["target_event_id"],
                         "confidence": row["confidence"],
                     },
                 )
@@ -518,6 +565,13 @@ def _card_score(row: sqlite3.Row, text: str, fts_ids: set[str]) -> float:
         return float(row["priority"])
     haystack = f"{row['title']} {row['content']}"
     return _text_score(row["card_id"], haystack, text, fts_ids)
+
+
+def _relation_score(row: sqlite3.Row, text: str) -> float:
+    if not text:
+        return float(row["confidence"])
+    haystack = f"{row['description']} {row['relation_type']}"
+    return _text_score(row["relation_id"], haystack, text, set())
 
 
 def _text_score(item_id: str, haystack: str, needle: str, fts_ids: set[str]) -> float:

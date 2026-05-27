@@ -6,9 +6,10 @@ import os
 from pathlib import Path
 from typing import Any
 
+from runner.mobiagent.personal_memory.cards import build_memory_cards
 from runner.mobiagent.personal_memory.ingest import events_from_profile_events, relations_from_profile_relations
 from runner.mobiagent.personal_memory.store import PersonalMemoryStore
-from runner.mobiagent.profile_pipeline.schemas import Relation, UserEvent
+from runner.mobiagent.profile_pipeline.schemas import ProfileItem, Relation, TodoItem, UserEvent
 
 from .extract import events_from_runs
 from .ingest import DEFAULT_SUCCESS_RUNS, collect_successful_runs, default_test_runs_dir
@@ -412,6 +413,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--limit", type=int, default=5)
     parser.add_argument("--events-json", type=Path)
     parser.add_argument("--relations-json", type=Path)
+    parser.add_argument("--profiles-json", type=Path)
+    parser.add_argument("--todos-json", type=Path)
     parser.add_argument("--db")
     return parser
 
@@ -430,12 +433,16 @@ def _cmd_build_personal_memory(args: argparse.Namespace) -> int:
     if args.relations_json:
         raw_relations = _load_records(args.relations_json)
         relations = relations_from_profile_relations([Relation(**item) for item in raw_relations])
+    profiles = [ProfileItem(**item) for item in _load_records(args.profiles_json)] if args.profiles_json else []
+    todos = [TodoItem(**item) for item in _load_records(args.todos_json)] if args.todos_json else []
+    cards = build_memory_cards(profiles, todos, relations) if profiles or todos else []
 
     store = PersonalMemoryStore(Path(args.db))
     store.initialize()
     store.upsert_artifacts(artifacts)
     store.upsert_events(normalized_events)
     store.upsert_relations(relations)
+    store.upsert_cards(cards)
     print(
         json.dumps(
             {
@@ -443,6 +450,7 @@ def _cmd_build_personal_memory(args: argparse.Namespace) -> int:
                 "events": len(normalized_events),
                 "artifacts": len(artifacts),
                 "relations": len(relations),
+                "cards": len(cards),
             },
             ensure_ascii=False,
         )

@@ -245,7 +245,8 @@ VectorDB 或 Mem0/Milvus 不再被视为唯一记忆后端。它们适合作为�
 核心命令：
 
 ```powershell
-python -m runner.mobiagent.personal_memory.cli build --db memory.db --events events.json --artifacts artifacts.json --relations relations.json
+python -m runner.mobiagent.personal_memory.cli build --db memory.db --events events.json --artifacts artifacts.json --relations relations.json --profiles profile.json --todos todos.json
+python -m runner.mobiagent.profile_pipeline.cli build-personal-memory --events-json events.jsonl --relations-json relations.jsonl --profiles-json profile.json --todos-json todos.json --db memory.db
 python -m runner.mobiagent.personal_memory.cli search --db memory.db --query "生成过去一周画像报告"
 ```
 

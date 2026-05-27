@@ -147,12 +147,18 @@ class ProfilePipelineTests(unittest.TestCase):
             "events.json",
             "--relations-json",
             "relations.json",
+            "--profiles-json",
+            "profiles.json",
+            "--todos-json",
+            "todos.json",
             "--db",
             "memory.db",
         ])
 
         self.assertEqual(args.command, "build-personal-memory")
         self.assertEqual(args.db, "memory.db")
+        self.assertEqual(args.profiles_json, Path("profiles.json"))
+        self.assertEqual(args.todos_json, Path("todos.json"))
 
     def test_build_personal_memory_command_writes_searchable_store(self) -> None:
         from runner.mobiagent.profile_pipeline.cli import main
@@ -201,6 +207,70 @@ class ProfilePipelineTests(unittest.TestCase):
         self.assertEqual(payload["relations"], 1)
         self.assertEqual([hit.item_id for hit in hits], [event.event_id])
         self.assertEqual([edge.relation_id for edge in relations], [relation.relation_id])
+
+    def test_build_personal_memory_command_writes_profile_and_todo_cards(self) -> None:
+        from runner.mobiagent.profile_pipeline.cli import main
+
+        event = sample_event()
+        profile = ProfileItem(
+            profile_id="profile_shop",
+            category="购物偏好",
+            claim="候选购物偏好：近期浏览过建材。",
+            evidence_event_ids=[event.event_id],
+            confidence=0.78,
+            time_range="recent",
+            service_eligible=True,
+        )
+        todo = TodoItem(
+            todo_id="todo_shop",
+            title="复查近期购物需求并进行比价",
+            reason="淘宝足迹只证明近期浏览，适合生成弱提醒。",
+            source_event_ids=[event.event_id],
+            priority="low",
+            due_time=None,
+            status="candidate",
+        )
+
+        with tempfile.TemporaryDirectory() as temp:
+            temp_path = Path(temp)
+            events_path = temp_path / "events.jsonl"
+            profiles_path = temp_path / "profiles.jsonl"
+            todos_path = temp_path / "todos.jsonl"
+            db_path = temp_path / "memory.db"
+            events_path.write_text(json.dumps(event.to_dict(), ensure_ascii=False) + "\n", encoding="utf-8")
+            profiles_path.write_text(json.dumps(profile.to_dict(), ensure_ascii=False) + "\n", encoding="utf-8")
+            todos_path.write_text(json.dumps(todo.to_dict(), ensure_ascii=False) + "\n", encoding="utf-8")
+
+            stdout = io.StringIO()
+            with contextlib.redirect_stdout(stdout):
+                exit_code = main([
+                    "build-personal-memory",
+                    "--events-json",
+                    str(events_path),
+                    "--profiles-json",
+                    str(profiles_path),
+                    "--todos-json",
+                    str(todos_path),
+                    "--db",
+                    str(db_path),
+                ])
+
+            payload = json.loads(stdout.getvalue())
+            store = PersonalMemoryStore(db_path)
+            hits = store.search(
+                AgentMemoryQuery(
+                    intent="card_lookup",
+                    text="购物",
+                    include_events=False,
+                    include_cards=True,
+                    limit=10,
+                )
+            )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(payload["cards"], 3)
+        self.assertIn("card_profile_profile_shop", [hit.item_id for hit in hits])
+        self.assertTrue(any(hit.metadata["card_type"] == "weekly_summary" for hit in hits))
 
     def test_default_report_path_stays_inside_mobiagent_repo(self) -> None:
         repo_root = Path(__file__).resolve().parents[3]

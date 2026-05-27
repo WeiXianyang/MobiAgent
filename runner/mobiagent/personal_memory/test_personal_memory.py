@@ -468,6 +468,84 @@ class PersonalMemoryStoreTests(unittest.TestCase):
         self.assertTrue(hits)
         self.assertIn("evt_recent", [hit.item_id for hit in hits])
 
+    def test_include_relations_query_returns_stored_relation_hit(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            store = PersonalMemoryStore(Path(tmp) / "memory.db")
+            store.initialize()
+            store.upsert_events([_sample_event("evt_shop_001", "2026-05-25T20:05:05")])
+            store.upsert_relations([
+                RelationEdge(
+                    relation_id="rel_shop_need",
+                    relation_type="behavior_causal",
+                    source_event_id="evt_shop_001",
+                    target_event_id=None,
+                    description="浏览建材后形成近期购物需求线索",
+                    confidence=0.74,
+                    evidence_event_ids=["evt_shop_001"],
+                )
+            ])
+
+            hits = store.search(
+                AgentMemoryQuery(
+                    intent="relation_lookup",
+                    text="购物需求",
+                    include_events=False,
+                    include_cards=False,
+                    include_relations=True,
+                    limit=5,
+                )
+            )
+
+        self.assertEqual([hit.item_id for hit in hits], ["rel_shop_need"])
+        self.assertEqual(hits[0].layer, "relation")
+        self.assertEqual(hits[0].event_ids, ["evt_shop_001"])
+        self.assertEqual(hits[0].relation_ids, ["rel_shop_need"])
+        self.assertEqual(hits[0].metadata["relation_type"], "behavior_causal")
+
+    def test_planner_structured_query_can_return_relation_for_matching_linked_event(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            store = PersonalMemoryStore(Path(tmp) / "memory.db")
+            store.initialize()
+            store.upsert_events([
+                _sample_event("evt_old", "2026-05-01T08:00:00"),
+                _sample_event("evt_recent", "2026-05-25T20:05:05"),
+            ])
+            store.upsert_relations([
+                RelationEdge(
+                    relation_id="rel_old",
+                    relation_type="behavior_causal",
+                    source_event_id="evt_old",
+                    target_event_id=None,
+                    description="旧浏览形成旧购物线索",
+                    confidence=0.95,
+                    evidence_event_ids=["evt_old"],
+                ),
+                RelationEdge(
+                    relation_id="rel_recent",
+                    relation_type="behavior_causal",
+                    source_event_id="evt_recent",
+                    target_event_id=None,
+                    description="近期浏览形成购物线索",
+                    confidence=0.7,
+                    evidence_event_ids=["evt_recent"],
+                ),
+            ])
+
+            hits = store.search(
+                AgentMemoryQuery(
+                    intent="weekly_report",
+                    text="生成过去一周画像报告",
+                    time_start="2026-05-20T00:00:00",
+                    time_end="2026-05-27T23:59:59",
+                    include_events=False,
+                    include_cards=False,
+                    include_relations=True,
+                    limit=10,
+                )
+            )
+
+        self.assertEqual([hit.item_id for hit in hits], ["rel_recent"])
+
 
 class PersonalMemoryRelationTests(unittest.TestCase):
     def test_relation_lookup_returns_causal_neighbors(self) -> None:
@@ -703,11 +781,23 @@ from runner.mobiagent.personal_memory.cli import _apply_limit, build_parser, mai
 class PersonalMemoryCliTests(unittest.TestCase):
     def test_cli_parser_accepts_build_and_search(self) -> None:
         parser = build_parser()
-        build_args = parser.parse_args(["build", "--db", "memory.db", "--events", "events.json"])
+        build_args = parser.parse_args([
+            "build",
+            "--db",
+            "memory.db",
+            "--events",
+            "events.json",
+            "--profiles",
+            "profile.jsonl",
+            "--todos",
+            "todos.jsonl",
+        ])
         search_args = parser.parse_args(["search", "--db", "memory.db", "--query", "过去一周画像"])
 
         self.assertEqual(build_args.command, "build")
         self.assertEqual(build_args.db, "memory.db")
+        self.assertEqual(build_args.profiles, "profile.jsonl")
+        self.assertEqual(build_args.todos, "todos.jsonl")
         self.assertEqual(search_args.command, "search")
         self.assertEqual(search_args.query, "过去一周画像")
 
@@ -775,6 +865,77 @@ class PersonalMemoryCliTests(unittest.TestCase):
         self.assertEqual(search_code, 0)
         self.assertEqual(json.loads(build_stdout.getvalue())["status"], "built")
         self.assertIn("evt_chat_jsonl", [hit["item_id"] for hit in search_payload["hits"]])
+
+    def test_cli_build_with_profiles_and_todos_writes_searchable_cards(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            db_path = tmp_path / "memory.db"
+            events_path = tmp_path / "events.jsonl"
+            profiles_path = tmp_path / "profiles.jsonl"
+            todos_path = tmp_path / "todos.jsonl"
+            events_path.write_text(json.dumps(_sample_event().to_dict(), ensure_ascii=False) + "\n", encoding="utf-8")
+            profiles_path.write_text(
+                json.dumps(
+                    ProfileItem(
+                        profile_id="profile_shop",
+                        category="购物偏好",
+                        claim="用户近期浏览建材商品。",
+                        evidence_event_ids=["evt_shop_001"],
+                        confidence=0.82,
+                        time_range="2026-05-20/2026-05-27",
+                        service_eligible=True,
+                    ).to_dict(),
+                    ensure_ascii=False,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            todos_path.write_text(
+                json.dumps(
+                    TodoItem(
+                        todo_id="todo_shop",
+                        title="复查建材购物需求",
+                        reason="浏览足迹显示用户可能仍需比较建材价格。",
+                        source_event_ids=["evt_shop_001"],
+                        priority="high",
+                        due_time=None,
+                        status="candidate",
+                    ).to_dict(),
+                    ensure_ascii=False,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            stdout = io.StringIO()
+            with contextlib.redirect_stdout(stdout):
+                exit_code = main([
+                    "build",
+                    "--db",
+                    str(db_path),
+                    "--events",
+                    str(events_path),
+                    "--profiles",
+                    str(profiles_path),
+                    "--todos",
+                    str(todos_path),
+                ])
+
+            store = PersonalMemoryStore(db_path)
+            hits = store.search(
+                AgentMemoryQuery(
+                    intent="cards",
+                    text="建材",
+                    include_events=False,
+                    include_cards=True,
+                    limit=10,
+                )
+            )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(json.loads(stdout.getvalue())["cards"], 3)
+        self.assertIn("card_todo_todo_shop", [hit.item_id for hit in hits])
+        self.assertTrue(any(hit.metadata["card_type"] == "weekly_summary" for hit in hits))
 
     def test_cli_search_limit_preserves_planner_default_unless_explicit(self) -> None:
         parser = build_parser()

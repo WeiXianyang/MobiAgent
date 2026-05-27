@@ -6,8 +6,9 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
-from runner.mobiagent.profile_pipeline.schemas import Relation, UserEvent
+from runner.mobiagent.profile_pipeline.schemas import ProfileItem, Relation, TodoItem, UserEvent
 
+from .cards import build_memory_cards
 from .ingest import events_from_profile_events, relations_from_profile_relations
 from .planner import plan_memory_query
 from .schemas import AgentMemoryQuery, NormalizedEvent, RawArtifact, RelationEdge
@@ -23,6 +24,8 @@ def build_parser() -> argparse.ArgumentParser:
     build.add_argument("--events", required=True)
     build.add_argument("--artifacts")
     build.add_argument("--relations")
+    build.add_argument("--profiles")
+    build.add_argument("--todos")
 
     search = subparsers.add_parser("search", help="Search memory with agent planner rules.")
     search.add_argument("--db", required=True)
@@ -43,9 +46,19 @@ def main(argv: list[str] | None = None) -> int:
         store.upsert_events(events)
         if args.artifacts:
             store.upsert_artifacts(_load_artifacts(Path(args.artifacts)))
+        relations = []
         if args.relations:
-            store.upsert_relations(_load_relations(Path(args.relations)))
-        print(json.dumps({"db": args.db, "status": "built"}, ensure_ascii=False))
+            relations = _load_relations(Path(args.relations))
+            store.upsert_relations(relations)
+        cards = []
+        if args.profiles or args.todos:
+            cards = build_memory_cards(
+                _load_profiles(Path(args.profiles)) if args.profiles else [],
+                _load_todos(Path(args.todos)) if args.todos else [],
+                relations,
+            )
+            store.upsert_cards(cards)
+        print(json.dumps({"db": args.db, "status": "built", "cards": len(cards)}, ensure_ascii=False))
         return 0
 
     if args.command == "search":
@@ -91,6 +104,14 @@ def _load_relations(path: Path) -> list[RelationEdge]:
             raise ValueError(f"Unsupported relation record in {path}: {sorted(record)}")
 
     return relations_from_profile_relations(relations)
+
+
+def _load_profiles(path: Path) -> list[ProfileItem]:
+    return [ProfileItem(**item) for item in _load_records(path)]
+
+
+def _load_todos(path: Path) -> list[TodoItem]:
+    return [TodoItem(**item) for item in _load_records(path)]
 
 
 def _load_records(path: Path) -> list[dict[str, Any]]:
