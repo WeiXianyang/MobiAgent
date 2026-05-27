@@ -9,18 +9,16 @@ from .schemas import MemoryHit
 
 class LexicalSemanticMemory:
     def __init__(self) -> None:
-        self._items: list[MemoryHit] = []
-        self._vectors: dict[str, Counter[str]] = {}
+        self._entries: list[tuple[MemoryHit, Counter[str]]] = []
 
     def index(self, hits: list[MemoryHit]) -> None:
-        self._items = list(hits)
-        self._vectors = {hit.item_id: _token_counts(hit.text) for hit in hits}
+        self._entries = [(hit, _token_counts(hit.text)) for hit in hits]
 
     def search(self, text: str, limit: int = 5) -> list[MemoryHit]:
         query_vector = _token_counts(text)
         ranked: list[MemoryHit] = []
-        for hit in self._items:
-            score = _cosine(query_vector, self._vectors[hit.item_id])
+        for hit, hit_vector in self._entries:
+            score = _cosine(query_vector, hit_vector)
             if score <= 0:
                 continue
             metadata = dict(hit.metadata)
@@ -41,8 +39,9 @@ class LexicalSemanticMemory:
 
 
 def _token_counts(text: str) -> Counter[str]:
-    parts = [part for part in re.split(r"[\W_]+", text, flags=re.UNICODE) if part]
-    chars = [char for char in text if "\u4e00" <= char <= "\u9fff"]
+    normalized = text.lower()
+    parts = [part for part in re.split(r"[\W_]+", normalized, flags=re.UNICODE) if part]
+    chars = [char for char in normalized if "\u4e00" <= char <= "\u9fff"]
     return Counter(parts + chars)
 
 

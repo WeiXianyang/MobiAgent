@@ -596,6 +596,49 @@ class PersonalMemoryVectorFallbackTests(unittest.TestCase):
 
         self.assertEqual(hits[0].item_id, "evt_underscore")
 
+    def test_lexical_semantic_memory_keeps_duplicate_item_vectors_separate(self) -> None:
+        memory = LexicalSemanticMemory()
+        memory.index(
+            [
+                MemoryHit(
+                    item_id="evt_duplicate",
+                    layer="event",
+                    text="alpha only",
+                    score=0.8,
+                    event_ids=["evt_duplicate_alpha"],
+                ),
+                MemoryHit(
+                    item_id="evt_duplicate",
+                    layer="event",
+                    text="gamma only",
+                    score=0.8,
+                    event_ids=["evt_duplicate_gamma"],
+                ),
+            ]
+        )
+
+        hits = memory.search("gamma", limit=5)
+
+        self.assertEqual([hit.text for hit in hits], ["gamma only"])
+
+    def test_lexical_semantic_memory_matches_ascii_case_insensitively(self) -> None:
+        memory = LexicalSemanticMemory()
+        memory.index(
+            [
+                MemoryHit(
+                    item_id="evt_case",
+                    layer="event",
+                    text="Alpha Beta",
+                    score=0.8,
+                    event_ids=["evt_case"],
+                )
+            ]
+        )
+
+        hits = memory.search("alpha", limit=1)
+
+        self.assertEqual(hits[0].item_id, "evt_case")
+
 
 if __name__ == "__main__":
     unittest.main()
