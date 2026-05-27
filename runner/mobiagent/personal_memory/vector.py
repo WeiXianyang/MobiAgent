@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import Counter
 import math
+import re
 
 from .schemas import MemoryHit
 
@@ -40,9 +41,8 @@ class LexicalSemanticMemory:
 
 
 def _token_counts(text: str) -> Counter[str]:
-    normalized = text.replace("，", " ").replace("。", " ").replace(",", " ").replace(".", " ")
-    parts = [part for part in normalized.split() if part]
-    chars = [char for char in normalized if "\u4e00" <= char <= "\u9fff"]
+    parts = [part for part in re.split(r"[^\w\u4e00-\u9fff]+", text, flags=re.UNICODE) if part]
+    chars = [char for char in text if "\u4e00" <= char <= "\u9fff"]
     return Counter(parts + chars)
 
 

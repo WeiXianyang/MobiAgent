@@ -559,6 +559,25 @@ class PersonalMemoryVectorFallbackTests(unittest.TestCase):
         self.assertEqual(hits[0].item_id, "evt_food")
         self.assertEqual(hits[0].metadata["semantic_backend"], "lexical")
 
+    def test_lexical_semantic_memory_splits_general_punctuation(self) -> None:
+        memory = LexicalSemanticMemory()
+        memory.index(
+            [
+                MemoryHit(
+                    item_id="evt_punctuation",
+                    layer="event",
+                    text="alpha;beta foo/bar 火锅！地点",
+                    score=0.8,
+                    event_ids=["evt_punctuation"],
+                )
+            ]
+        )
+
+        for query in ["beta", "bar", "地点"]:
+            with self.subTest(query=query):
+                hits = memory.search(query, limit=1)
+                self.assertEqual(hits[0].item_id, "evt_punctuation")
+
 
 if __name__ == "__main__":
     unittest.main()
