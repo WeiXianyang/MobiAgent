@@ -578,6 +578,24 @@ class PersonalMemoryVectorFallbackTests(unittest.TestCase):
                 hits = memory.search(query, limit=1)
                 self.assertEqual(hits[0].item_id, "evt_punctuation")
 
+    def test_lexical_semantic_memory_splits_underscore(self) -> None:
+        memory = LexicalSemanticMemory()
+        memory.index(
+            [
+                MemoryHit(
+                    item_id="evt_underscore",
+                    layer="event",
+                    text="foo_bar",
+                    score=0.8,
+                    event_ids=["evt_underscore"],
+                )
+            ]
+        )
+
+        hits = memory.search("bar", limit=1)
+
+        self.assertEqual(hits[0].item_id, "evt_underscore")
+
 
 if __name__ == "__main__":
     unittest.main()

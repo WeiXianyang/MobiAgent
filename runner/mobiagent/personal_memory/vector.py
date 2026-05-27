@@ -41,7 +41,7 @@ class LexicalSemanticMemory:
 
 
 def _token_counts(text: str) -> Counter[str]:
-    parts = [part for part in re.split(r"[^\w\u4e00-\u9fff]+", text, flags=re.UNICODE) if part]
+    parts = [part for part in re.split(r"[\W_]+", text, flags=re.UNICODE) if part]
     chars = [char for char in text if "\u4e00" <= char <= "\u9fff"]
     return Counter(parts + chars)
 
