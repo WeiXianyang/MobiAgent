@@ -300,5 +300,32 @@ class PersonalMemoryStoreTests(unittest.TestCase):
             self.assertEqual([hit.item_id for hit in hits], ["card_recent"])
 
 
+class PersonalMemoryRelationTests(unittest.TestCase):
+    def test_relation_lookup_returns_causal_neighbors(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            store = PersonalMemoryStore(Path(tmp) / "memory.db")
+            store.initialize()
+            store.upsert_events([
+                _sample_event("evt_chat_001", "2026-05-25T19:00:00"),
+                _sample_event("evt_shop_001", "2026-05-25T20:05:05"),
+            ])
+            store.upsert_relations([
+                RelationEdge(
+                    relation_id="rel_chat_to_shop",
+                    relation_type="causes",
+                    source_event_id="evt_chat_001",
+                    target_event_id="evt_shop_001",
+                    description="聊天邀约后出现购物搜索",
+                    confidence=0.72,
+                    evidence_event_ids=["evt_chat_001", "evt_shop_001"],
+                )
+            ])
+
+            neighbors = store.relation_neighborhood("evt_chat_001", max_depth=1)
+
+            self.assertEqual(neighbors[0].relation_id, "rel_chat_to_shop")
+            self.assertEqual(neighbors[0].target_event_id, "evt_shop_001")
+
+
 if __name__ == "__main__":
     unittest.main()

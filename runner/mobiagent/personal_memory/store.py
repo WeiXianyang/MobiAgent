@@ -290,6 +290,24 @@ class PersonalMemoryStore:
             for row in rows
         ]
 
+    def relation_neighborhood(self, event_id: str, max_depth: int = 1) -> list[RelationEdge]:
+        seen_events = {event_id}
+        frontier = {event_id}
+        collected: dict[str, RelationEdge] = {}
+        depth = 0
+        while frontier and depth < max_depth:
+            next_frontier: set[str] = set()
+            for current_event_id in frontier:
+                for relation in self.relations_for_event(current_event_id):
+                    collected[relation.relation_id] = relation
+                    for neighbor in (relation.source_event_id, relation.target_event_id):
+                        if neighbor and neighbor not in seen_events:
+                            seen_events.add(neighbor)
+                            next_frontier.add(neighbor)
+            frontier = next_frontier
+            depth += 1
+        return sorted(collected.values(), key=lambda relation: relation.confidence, reverse=True)
+
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
         conn = sqlite3.connect(self.db_path)
