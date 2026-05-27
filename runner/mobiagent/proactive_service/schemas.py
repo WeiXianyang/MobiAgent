@@ -116,6 +116,7 @@ class WeeklyProfileReport:
     markdown: str
     evidence_event_ids: list[str]
     proactive_items: list[str]
+    scheduled_result_count: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

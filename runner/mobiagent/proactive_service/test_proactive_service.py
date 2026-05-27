@@ -318,6 +318,12 @@ class ProactiveServiceTests(unittest.TestCase):
             self.assertTrue((output / "package.json").exists())
             self.assertTrue((output / "slidev_export_command.json").exists())
             self.assertTrue((output / "image_prompts.json").exists())
+            ppt_outline = (output / "ppt_outline.md").read_text(encoding="utf-8")
+            slidev_deck = (output / "slidev_task3.md").read_text(encoding="utf-8")
+            self.assertIn("用户待办 1 条", ppt_outline)
+            self.assertIn("执行结果 1 条", ppt_outline)
+            self.assertIn("用户待办</div>", slidev_deck)
+            self.assertIn("定时主动执行结果：1 条", slidev_deck)
 
     def test_cli_run_scheduled_todos_passes_routing_options(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

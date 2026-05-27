@@ -273,7 +273,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "export-ppt-outline":
-        report = build_weekly_report(store, days=args.days, end_date=args.end_date)
+        report = _build_report_for_exports(store, args, output_dir)
         outline = export_ppt_outline(report)
         _write_text(output_dir / "ppt_outline.md", outline.markdown)
         _write_json(output_dir / "ppt_outline.json", outline.to_dict())
@@ -281,7 +281,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "export-slidev-ppt":
-        report = build_weekly_report(store, days=args.days, end_date=args.end_date)
+        report = _build_report_for_exports(store, args, output_dir)
         result = export_slidev_deck(report, output_dir=output_dir, execute=args.execute)
         _write_json(output_dir / "slidev_export_result.json", result.to_dict())
         print(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))

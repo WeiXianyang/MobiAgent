@@ -12,7 +12,15 @@ from .schemas import ImagePromptBundle, PresentationOutline, SlidevExportResult,
 
 def export_ppt_outline(report: WeeklyProfileReport) -> PresentationOutline:
     slides = [
-        {"title": "任务3增强版主动服务", "bullets": ["e2e模式", "远端单模型 MobiMind-1.5-4B", "画像建议与用户定时待办分离"]},
+        {
+            "title": "任务3增强版主动服务",
+            "bullets": [
+                "e2e模式",
+                "远端单模型 MobiMind-1.5-4B",
+                "画像建议与用户定时待办分离",
+                f"用户待办 {report.scheduled_todo_count} 条，执行结果 {report.scheduled_result_count} 条",
+            ],
+        },
         {"title": "数据来源", "bullets": [f"过去{report.days}天事件 {report.event_count} 条", f"证据事件: {', '.join(report.evidence_event_ids) or '无'}"]},
         {"title": "用户画像摘要", "bullets": [f"画像条目 {report.profile_count} 条", "保留证据与置信度"]},
         {"title": "画像驱动主动建议", "bullets": report.proactive_items or ["暂无画像驱动主动建议"]},
@@ -125,6 +133,8 @@ def build_slidev_markdown(report: WeeklyProfileReport) -> str:
             f"<div><div class=\"text-4xl font-bold\">{report.profile_count}</div><div>画像条目</div></div>",
             f"<div><div class=\"text-4xl font-bold\">{report.scheduled_todo_count}</div><div>用户待办</div></div>",
             "</div>",
+            "",
+            f"定时主动执行结果：{report.scheduled_result_count} 条",
         ],
         [
             "# 数据来源与证据边界",

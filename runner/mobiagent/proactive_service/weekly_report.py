@@ -84,4 +84,5 @@ def build_weekly_report(
         markdown="\n".join(lines) + "\n",
         evidence_event_ids=evidence_ids,
         proactive_items=proactive_items,
+        scheduled_result_count=len(scheduled_results),
     )
