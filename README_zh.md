@@ -236,6 +236,19 @@ NEO4J_PASSWORD=testpassword
 
 详细配置说明见 [runner README](runner/README.md#用户画像与偏好记忆)。
 
+## Proactive Personal Memory
+
+本项目新增 `runner/mobiagent/personal_memory` 作为 proactive agent 的轻量个人记忆系统。它以本地 SQLite 事件时间线为主体，优先支持时间范围、App、事件类型、任务状态、证据链和关系图检索；画像、待办和周报以 memory card 的方式压缩保存，供主动服务快速读取。
+
+VectorDB 或 Mem0/Milvus 不再被视为唯一记忆后端。它们适合作为语义相似召回的补充层，用于模糊表达、相似历史任务和弱匹配场景；精确查询、范围查询、因果关系和待办状态由结构化索引和关系图承担。
+
+核心命令：
+
+```powershell
+python -m runner.mobiagent.personal_memory.cli build --db memory.db --events events.json --artifacts artifacts.json --relations relations.json
+python -m runner.mobiagent.personal_memory.cli search --db memory.db --query "生成过去一周画像报告"
+```
+
 ##### 4.2 经验记忆
 
 经验记忆使规划器能够检索并使用类似的过往任务执行经验。启动 Agent 执行器时添加 `--use_experience` 参数即可启用。
