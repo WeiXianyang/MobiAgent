@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import tempfile
 import unittest
+from pathlib import Path
 
 from runner.mobiagent.personal_memory.schemas import (
     AgentMemoryQuery,
@@ -10,6 +12,7 @@ from runner.mobiagent.personal_memory.schemas import (
     RawArtifact,
     RelationEdge,
 )
+from runner.mobiagent.personal_memory.store import PersonalMemoryStore
 
 
 class PersonalMemorySchemaTests(unittest.TestCase):
@@ -96,6 +99,83 @@ class PersonalMemorySchemaTests(unittest.TestCase):
         self.assertEqual(edge.relation_type, "causes")
         self.assertEqual(card.relation_ids, ["rel_chat_to_shop"])
         self.assertEqual(card.status, "active")
+
+
+def _sample_artifact() -> RawArtifact:
+    return RawArtifact(
+        artifact_id="raw_shop_001",
+        kind="screenshot",
+        uri="runs/taobao/step-8.png",
+        source="workflow",
+        captured_at="2026-05-25T20:05:00",
+        metadata={"app": "淘宝", "step_id": "8"},
+    )
+
+
+def _sample_event(event_id: str = "evt_shop_001", event_time: str = "2026-05-25T20:05:05") -> NormalizedEvent:
+    return NormalizedEvent(
+        event_id=event_id,
+        user_id="local_user",
+        event_time=event_time,
+        app="淘宝",
+        package_name="com.taobao.taobao",
+        event_type="shopping_browse",
+        action="observe",
+        summary="用户浏览建材商品，价格信号为3.02元",
+        entities={"product_categories": ["建材"], "price_signal": ["3.02"]},
+        artifact_ids=["raw_shop_001"],
+        task_id="task_shopping",
+        state="observed",
+        confidence=0.86,
+        privacy_level="derived",
+    )
+
+
+class PersonalMemoryStoreTests(unittest.TestCase):
+    def test_event_range_query_uses_structured_filters(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            store = PersonalMemoryStore(Path(tmp) / "memory.db")
+            store.initialize()
+            store.upsert_artifacts([_sample_artifact()])
+            store.upsert_events([
+                _sample_event("evt_old", "2026-05-01T08:00:00"),
+                _sample_event("evt_recent", "2026-05-25T20:05:05"),
+            ])
+
+            hits = store.search(
+                AgentMemoryQuery(
+                    intent="range_lookup",
+                    text="最近购物记录",
+                    time_start="2026-05-20T00:00:00",
+                    time_end="2026-05-27T23:59:59",
+                    apps=["淘宝"],
+                    event_types=["shopping_browse"],
+                    include_cards=False,
+                    limit=10,
+                )
+            )
+
+            self.assertEqual([hit.item_id for hit in hits], ["evt_recent"])
+            self.assertEqual(hits[0].layer, "event")
+
+    def test_fts_retrieves_event_without_embedding(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            store = PersonalMemoryStore(Path(tmp) / "memory.db")
+            store.initialize()
+            store.upsert_artifacts([_sample_artifact()])
+            store.upsert_events([_sample_event()])
+
+            hits = store.search(
+                AgentMemoryQuery(
+                    intent="keyword_lookup",
+                    text="建材",
+                    include_cards=False,
+                    limit=5,
+                )
+            )
+
+            self.assertEqual(hits[0].item_id, "evt_shop_001")
+            self.assertGreater(hits[0].score, 0)
 
 
 if __name__ == "__main__":
