@@ -12,9 +12,10 @@ from runner.mobiagent.personal_memory.schemas import (
     RawArtifact,
     RelationEdge,
 )
+from runner.mobiagent.personal_memory.cards import build_memory_cards
 from runner.mobiagent.personal_memory.ingest import events_from_profile_events, relations_from_profile_relations
 from runner.mobiagent.personal_memory.store import PersonalMemoryStore
-from runner.mobiagent.profile_pipeline.schemas import Relation, UserEvent
+from runner.mobiagent.profile_pipeline.schemas import ProfileItem, Relation, TodoItem, UserEvent
 
 
 class PersonalMemorySchemaTests(unittest.TestCase):
@@ -101,6 +102,36 @@ class PersonalMemorySchemaTests(unittest.TestCase):
         self.assertEqual(edge.relation_type, "causes")
         self.assertEqual(card.relation_ids, ["rel_chat_to_shop"])
         self.assertEqual(card.status, "active")
+
+
+class PersonalMemoryCardTests(unittest.TestCase):
+    def test_build_memory_cards_from_profiles_and_todos(self) -> None:
+        profile = ProfileItem(
+            profile_id="profile_food",
+            category="饮食偏好",
+            claim="用户近期出现火锅聚餐相关意图。",
+            evidence_event_ids=["evt_chat_001"],
+            confidence=0.81,
+            time_range="2026-05-20/2026-05-27",
+            service_eligible=True,
+            privacy_level="derived",
+        )
+        todo = TodoItem(
+            todo_id="todo_dinner",
+            title="确认周五火锅地点",
+            reason="聊天中出现聚餐时间和食物偏好，但缺少地点。",
+            source_event_ids=["evt_chat_001"],
+            priority="high",
+            due_time="2026-05-29T18:00:00",
+            status="open",
+        )
+
+        cards = build_memory_cards([profile], [todo], [])
+
+        self.assertEqual(cards[0].card_type, "todo")
+        self.assertEqual(cards[0].priority, 0.9)
+        self.assertEqual(cards[1].card_type, "profile")
+        self.assertIn("火锅", cards[1].content)
 
 
 class PersonalMemoryIngestTests(unittest.TestCase):
