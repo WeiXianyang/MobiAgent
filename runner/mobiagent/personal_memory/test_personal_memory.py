@@ -193,7 +193,7 @@ class PersonalMemoryCardTests(unittest.TestCase):
                 todo_id="todo_b",
                 title="确认周五火锅地点",
                 reason="聊天中出现聚餐时间和食物偏好，但缺少地点。",
-                source_event_ids=["evt_chat_002"],
+                source_event_ids=["evt_todo_b"],
                 priority="high",
                 due_time="2026-05-29T18:00:00",
                 status="open",
@@ -202,22 +202,44 @@ class PersonalMemoryCardTests(unittest.TestCase):
                 todo_id="todo_a",
                 title="比较建材价格",
                 reason="购物浏览中出现建材需求。",
-                source_event_ids=["evt_shop_001"],
+                source_event_ids=["evt_todo_a"],
                 priority="medium",
                 due_time=None,
                 status="open",
             ),
         ]
+        relations = [
+            RelationEdge(
+                relation_id="rel_b",
+                relation_type="causes",
+                source_event_id="evt_chat_002",
+                target_event_id="evt_todo_b",
+                description="聊天后形成火锅地点待办",
+                confidence=0.72,
+                evidence_event_ids=["evt_chat_002", "evt_todo_b"],
+            ),
+            RelationEdge(
+                relation_id="rel_a",
+                relation_type="causes",
+                source_event_id="evt_shop_001",
+                target_event_id="evt_todo_a",
+                description="购物浏览后形成价格比较待办",
+                confidence=0.68,
+                evidence_event_ids=["evt_shop_001", "evt_todo_a"],
+            ),
+        ]
 
-        weekly = [card for card in build_memory_cards(profiles, todos, []) if card.card_type == "weekly_summary"][0]
+        weekly = [card for card in build_memory_cards(profiles, todos, relations) if card.card_type == "weekly_summary"][0]
         reversed_weekly = [
             card
-            for card in build_memory_cards(list(reversed(profiles)), list(reversed(todos)), [])
+            for card in build_memory_cards(list(reversed(profiles)), list(reversed(todos)), list(reversed(relations)))
             if card.card_type == "weekly_summary"
         ][0]
 
         self.assertEqual(weekly.card_id, reversed_weekly.card_id)
         self.assertEqual(weekly.content, reversed_weekly.content)
+        self.assertEqual(weekly.event_ids, reversed_weekly.event_ids)
+        self.assertEqual(weekly.relation_ids, reversed_weekly.relation_ids)
 
 
 class PersonalMemoryIngestTests(unittest.TestCase):

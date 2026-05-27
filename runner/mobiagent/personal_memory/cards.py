@@ -80,15 +80,18 @@ def _weekly_summary_card(
         + "|".join(todo.todo_id for todo in canonical_todos)
     )
     digest = hashlib.sha1(raw_key.encode("utf-8")).hexdigest()[:8]
-    event_ids = sorted({event_id for profile in profiles for event_id in profile.evidence_event_ids})
-    event_ids.extend(event_id for todo in todos for event_id in todo.source_event_ids if event_id not in event_ids)
+    event_ids = sorted(
+        {event_id for profile in profiles for event_id in profile.evidence_event_ids}
+        | {event_id for todo in todos for event_id in todo.source_event_ids}
+    )
+    relation_ids = sorted({relation.relation_id for relation in relations})
     return MemoryCard(
         card_id=f"card_weekly_{digest}",
         card_type="weekly_summary",
         title="过去一周画像摘要",
         content=f"画像主题：{profile_titles}。待办主题：{todo_titles}。关系数量：{len(relations)}。",
         event_ids=event_ids,
-        relation_ids=[relation.relation_id for relation in relations],
+        relation_ids=relation_ids,
         priority=0.7,
         status="active",
         privacy_level="derived",
