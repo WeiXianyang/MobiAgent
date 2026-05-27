@@ -439,6 +439,32 @@ class PersonalMemoryStoreTests(unittest.TestCase):
 
             self.assertEqual([hit.item_id for hit in hits], ["card_recent"])
 
+    def test_task_resume_plan_falls_back_to_recent_candidates_when_text_misses(self) -> None:
+        from runner.mobiagent.personal_memory.planner import plan_memory_query
+
+        with tempfile.TemporaryDirectory() as tmp:
+            store = PersonalMemoryStore(Path(tmp) / "memory.db")
+            store.initialize()
+            store.upsert_events([_sample_event("evt_recent", "2026-05-25T20:05:05")])
+            store.upsert_cards([
+                MemoryCard(
+                    card_id="card_recent",
+                    card_type="shopping_summary",
+                    title="建材浏览摘要",
+                    content="用户浏览建材商品。",
+                    event_ids=["evt_recent"],
+                    relation_ids=[],
+                    priority=0.8,
+                    status="active",
+                    privacy_level="derived",
+                )
+            ])
+
+            hits = store.search(plan_memory_query("继续上次那个"))
+
+        self.assertTrue(hits)
+        self.assertIn("evt_recent", [hit.item_id for hit in hits])
+
 
 class PersonalMemoryRelationTests(unittest.TestCase):
     def test_relation_lookup_returns_causal_neighbors(self) -> None:
@@ -659,6 +685,12 @@ class PersonalMemoryPlannerTests(unittest.TestCase):
         self.assertEqual(query.intent, "task_resume")
         self.assertTrue(query.include_events)
         self.assertTrue(query.include_cards)
+        self.assertTrue(query.semantic_fallback)
+
+    def test_plain_last_week_lookup_is_not_weekly_report(self) -> None:
+        query = plan_memory_query("查一下上周五吃火锅的地点")
+
+        self.assertNotEqual(query.intent, "weekly_report")
         self.assertTrue(query.semantic_fallback)
 
 

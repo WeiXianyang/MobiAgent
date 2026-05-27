@@ -7,7 +7,13 @@ from .schemas import AgentMemoryQuery
 
 def plan_memory_query(text: str, now: datetime | None = None) -> AgentMemoryQuery:
     current = now or datetime.now()
-    if "过去一周" in text or "上周" in text or "周报" in text or "画像报告" in text:
+    report_terms = ("总结", "报告", "画像")
+    is_weekly_report = (
+        "周报" in text
+        or "画像报告" in text
+        or (("过去一周" in text or "上周" in text) and any(term in text for term in report_terms))
+    )
+    if is_weekly_report:
         start = current - timedelta(days=7)
         return AgentMemoryQuery(
             intent="weekly_report",

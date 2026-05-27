@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from contextlib import contextmanager
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, Iterable, Iterator
 
@@ -255,6 +256,12 @@ class PersonalMemoryStore:
             )
 
     def search(self, query: AgentMemoryQuery) -> list[MemoryHit]:
+        hits = self._search_once(query)
+        if hits or not query.semantic_fallback:
+            return hits
+        return self._search_once(replace(query, text="", semantic_fallback=False))
+
+    def _search_once(self, query: AgentMemoryQuery) -> list[MemoryHit]:
         hits: list[MemoryHit] = []
         with self._connect() as conn:
             if query.include_events:
