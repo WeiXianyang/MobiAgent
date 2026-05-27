@@ -640,5 +640,27 @@ class PersonalMemoryVectorFallbackTests(unittest.TestCase):
         self.assertEqual(hits[0].item_id, "evt_case")
 
 
+from runner.mobiagent.personal_memory.planner import plan_memory_query
+
+
+class PersonalMemoryPlannerTests(unittest.TestCase):
+    def test_weekly_report_uses_range_and_cards_without_vector_first(self) -> None:
+        query = plan_memory_query("生成过去一周画像报告")
+
+        self.assertEqual(query.intent, "weekly_report")
+        self.assertTrue(query.include_events)
+        self.assertTrue(query.include_cards)
+        self.assertTrue(query.include_relations)
+        self.assertFalse(query.semantic_fallback)
+
+    def test_ambiguous_task_uses_semantic_fallback_after_structured_search(self) -> None:
+        query = plan_memory_query("继续上次那个")
+
+        self.assertEqual(query.intent, "task_resume")
+        self.assertTrue(query.include_events)
+        self.assertTrue(query.include_cards)
+        self.assertTrue(query.semantic_fallback)
+
+
 if __name__ == "__main__":
     unittest.main()
