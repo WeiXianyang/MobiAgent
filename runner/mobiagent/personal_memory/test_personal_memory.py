@@ -177,6 +177,53 @@ class PersonalMemoryStoreTests(unittest.TestCase):
             self.assertEqual(hits[0].item_id, "evt_shop_001")
             self.assertGreater(hits[0].score, 0)
 
+    def test_card_search_respects_linked_event_filters(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            store = PersonalMemoryStore(Path(tmp) / "memory.db")
+            store.initialize()
+            store.upsert_artifacts([_sample_artifact()])
+            store.upsert_events([
+                _sample_event("evt_old", "2026-05-01T08:00:00"),
+                _sample_event("evt_recent", "2026-05-25T20:05:05"),
+            ])
+            store.upsert_cards([
+                MemoryCard(
+                    card_id="card_old",
+                    card_type="shopping_summary",
+                    title="建材浏览摘要",
+                    content="用户浏览建材商品。",
+                    event_ids=["evt_old"],
+                    relation_ids=[],
+                    priority=0.95,
+                    status="active",
+                    privacy_level="derived",
+                ),
+                MemoryCard(
+                    card_id="card_recent",
+                    card_type="shopping_summary",
+                    title="建材浏览摘要",
+                    content="用户浏览建材商品。",
+                    event_ids=["evt_recent"],
+                    relation_ids=[],
+                    priority=0.8,
+                    status="active",
+                    privacy_level="derived",
+                ),
+            ])
+
+            hits = store.search(
+                AgentMemoryQuery(
+                    intent="card_range_lookup",
+                    text="建材",
+                    time_start="2026-05-20T00:00:00",
+                    include_events=False,
+                    include_cards=True,
+                    limit=10,
+                )
+            )
+
+            self.assertEqual([hit.item_id for hit in hits], ["card_recent"])
+
 
 if __name__ == "__main__":
     unittest.main()

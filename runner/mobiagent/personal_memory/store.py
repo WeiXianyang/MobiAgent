@@ -353,8 +353,12 @@ class PersonalMemoryStore:
         fts_ids = _matching_fts_ids(conn, "cards_fts", "card_id", query.text)
         rows = conn.execute(sql, params).fetchall()
         hits = []
+        linked_event_ids = _matching_event_ids(conn, query) if _has_linked_event_filters(query) else None
         require_text_match = bool(query.text) and not _has_card_structured_filters(query)
         for row in rows:
+            event_ids = json.loads(row["event_ids_json"])
+            if linked_event_ids is not None and not linked_event_ids.intersection(event_ids):
+                continue
             score = _card_score(row, query.text, fts_ids)
             if require_text_match and score <= 0:
                 continue
@@ -366,7 +370,7 @@ class PersonalMemoryStore:
                     layer="card",
                     text=f"{row['title']}\n{row['content']}",
                     score=score,
-                    event_ids=json.loads(row["event_ids_json"]),
+                    event_ids=event_ids,
                     relation_ids=json.loads(row["relation_ids_json"]),
                     metadata={
                         "card_type": row["card_type"],
@@ -413,7 +417,28 @@ def _has_event_structured_filters(query: AgentMemoryQuery) -> bool:
 
 
 def _has_card_structured_filters(query: AgentMemoryQuery) -> bool:
-    return bool(query.privacy_levels)
+    return bool(query.privacy_levels) or _has_linked_event_filters(query)
+
+
+def _has_linked_event_filters(query: AgentMemoryQuery) -> bool:
+    return any(
+        [
+            query.time_start,
+            query.time_end,
+            query.apps,
+            query.event_types,
+            query.task_ids,
+            query.states,
+        ]
+    )
+
+
+def _matching_event_ids(conn: sqlite3.Connection, query: AgentMemoryQuery) -> set[str]:
+    where, params = _event_filters(query)
+    sql = "SELECT event_id FROM events"
+    if where:
+        sql += " WHERE " + " AND ".join(where)
+    return {row["event_id"] for row in conn.execute(sql, params).fetchall()}
 
 
 def _range_filter(
