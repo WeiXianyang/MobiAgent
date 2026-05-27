@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import contextlib
+import io
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -694,7 +697,7 @@ class PersonalMemoryPlannerTests(unittest.TestCase):
         self.assertTrue(query.semantic_fallback)
 
 
-from runner.mobiagent.personal_memory.cli import build_parser
+from runner.mobiagent.personal_memory.cli import _apply_limit, build_parser, main
 
 
 class PersonalMemoryCliTests(unittest.TestCase):
@@ -707,6 +710,83 @@ class PersonalMemoryCliTests(unittest.TestCase):
         self.assertEqual(build_args.db, "memory.db")
         self.assertEqual(search_args.command, "search")
         self.assertEqual(search_args.query, "过去一周画像")
+
+    def test_cli_build_and_search_accept_profile_jsonl_inputs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            db_path = tmp_path / "memory.db"
+            events_path = tmp_path / "events.jsonl"
+            relations_path = tmp_path / "relations.jsonl"
+            events_path.write_text(
+                "\n".join(
+                    [
+                        json.dumps(
+                            {
+                                "event_id": "evt_chat_jsonl",
+                                "user_id": "local_user",
+                                "app": "微信",
+                                "package_name": "com.tencent.mm",
+                                "event_time": "2026-05-27T09:30:05",
+                                "source_run": "run_chat",
+                                "source_step": "2",
+                                "evidence_paths": ["runs/wechat/step-2.png"],
+                                "event_type": "chat_context",
+                                "summary": "朋友提到周五吃火锅",
+                                "entities": {"food": ["火锅"]},
+                                "confidence": 0.78,
+                                "privacy_level": "sensitive_summary",
+                            },
+                            ensure_ascii=False,
+                        ),
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            relations_path.write_text(
+                json.dumps(
+                    {
+                        "relation_id": "rel_jsonl",
+                        "relation_type": "causes",
+                        "source_event_id": "evt_chat_jsonl",
+                        "target_event_id": None,
+                        "description": "聊天中出现火锅计划",
+                        "evidence_event_ids": ["evt_chat_jsonl"],
+                        "confidence": 0.72,
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+
+            build_stdout = io.StringIO()
+            with contextlib.redirect_stdout(build_stdout):
+                build_code = main(
+                    ["build", "--db", str(db_path), "--events", str(events_path), "--relations", str(relations_path)]
+                )
+
+            search_stdout = io.StringIO()
+            with contextlib.redirect_stdout(search_stdout):
+                search_code = main(["search", "--db", str(db_path), "--query", "火锅"])
+
+            search_payload = json.loads(search_stdout.getvalue())
+
+        self.assertEqual(build_code, 0)
+        self.assertEqual(search_code, 0)
+        self.assertEqual(json.loads(build_stdout.getvalue())["status"], "built")
+        self.assertIn("evt_chat_jsonl", [hit["item_id"] for hit in search_payload["hits"]])
+
+    def test_cli_search_limit_preserves_planner_default_unless_explicit(self) -> None:
+        parser = build_parser()
+
+        default_args = parser.parse_args(["search", "--db", "memory.db", "--query", "过去一周画像"])
+        explicit_args = parser.parse_args(
+            ["search", "--db", "memory.db", "--query", "过去一周画像", "--limit", "7"]
+        )
+
+        self.assertIsNone(default_args.limit)
+        self.assertEqual(_apply_limit(plan_memory_query(default_args.query), default_args.limit).limit, 30)
+        self.assertEqual(_apply_limit(plan_memory_query(explicit_args.query), explicit_args.limit).limit, 7)
 
 
 if __name__ == "__main__":
