@@ -30,6 +30,14 @@ def _safe_file_part(value: str) -> str:
     return "".join(ch if ch.isalnum() or ch in "-_" else "-" for ch in value).strip("-") or "scheduled"
 
 
+def _open_target_app_description(todo: ScheduledTodo) -> str:
+    return (
+        "只打开或切换到与该定时待办相关的目标应用，必要时停留在应用首页或当前页面；"
+        "不要执行搜索、下单、付款、发送消息等待办正文动作。"
+        f"待办：{todo.title}"
+    )
+
+
 def _parse_relative_instruction(instruction: str, now: datetime) -> tuple[str, datetime]:
     text = instruction.strip()
     match = re.match(r"^(?P<num>\d+)\s*(?P<unit>分钟|分|小时|秒)后(?P<task>.+)$", text)
@@ -62,15 +70,16 @@ def _workflow_for_scheduled_todo(todo: ScheduledTodo) -> dict:
             "due_at": todo.due_at,
         },
         "steps": [
-            {"id": 1, "type": "gui_task", "name": "执行用户明确待办", "task_description": todo.task_description},
-            {"id": 2, "type": "gui_action", "name": "保存执行截图", "action": "screenshot", "file_name": "scheduled_todo_result.jpg"},
+            {"id": 1, "type": "gui_task", "name": "打开目标应用", "task_description": _open_target_app_description(todo)},
+            {"id": 2, "type": "gui_task", "name": "执行用户明确待办", "task_description": todo.task_description},
+            {"id": 3, "type": "gui_action", "name": "保存执行截图", "action": "screenshot", "file_name": "scheduled_todo_result.jpg"},
             {
-                "id": 3,
+                "id": 4,
                 "type": "tool",
                 "tool_name": "vlm_qa",
                 "inputs": {
                     "mode": "summary",
-                    "image": "${steps.2.output.image_path}",
+                    "image": "${steps.3.output.image_path}",
                     "question": "请总结本次用户定时待办的执行结果。",
                 },
             },

@@ -185,17 +185,25 @@ class ProactiveServiceTests(unittest.TestCase):
         self.assertFalse(hasattr(store, "todos"))
 
     def test_parse_scheduled_todo_from_relative_user_instruction(self) -> None:
-        todo = parse_scheduled_todo(
-            "1分钟后打开淘宝搜索护肤品",
-            now_iso="2026-05-26T00:00:00",
-            workflow_dir=Path("generated_workflows"),
-            model_name="fengerhu1/MobiMind-1.5-4B",
-        )
+        with tempfile.TemporaryDirectory() as temp:
+            todo = parse_scheduled_todo(
+                "1分钟后打开淘宝搜索护肤品",
+                now_iso="2026-05-26T00:00:00",
+                workflow_dir=Path(temp) / "generated_workflows",
+                model_name="fengerhu1/MobiMind-1.5-4B",
+            )
+            workflow = json.loads(Path(todo.workflow_path).read_text(encoding="utf-8"))
 
         self.assertEqual(todo.title, "打开淘宝搜索护肤品")
         self.assertEqual(todo.due_at, "2026-05-26T00:01:00")
         self.assertTrue(todo.requires_user_confirmation)
         self.assertEqual(todo.status, "scheduled")
+        gui_steps = [step for step in workflow["steps"] if step["type"] == "gui_task"]
+        self.assertEqual([step["id"] for step in gui_steps], [1, 2])
+        self.assertIn("只打开或切换", gui_steps[0]["task_description"])
+        self.assertIn("不要执行搜索、下单、付款、发送消息", gui_steps[0]["task_description"])
+        self.assertIn("待办：打开淘宝搜索护肤品", gui_steps[0]["task_description"])
+        self.assertIn("到点后主动执行", gui_steps[1]["task_description"])
 
     def test_due_scheduled_todos_execute_only_when_due(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
