@@ -12,7 +12,9 @@ from runner.mobiagent.personal_memory.schemas import (
     RawArtifact,
     RelationEdge,
 )
+from runner.mobiagent.personal_memory.ingest import events_from_profile_events, relations_from_profile_relations
 from runner.mobiagent.personal_memory.store import PersonalMemoryStore
+from runner.mobiagent.profile_pipeline.schemas import Relation, UserEvent
 
 
 class PersonalMemorySchemaTests(unittest.TestCase):
@@ -99,6 +101,49 @@ class PersonalMemorySchemaTests(unittest.TestCase):
         self.assertEqual(edge.relation_type, "causes")
         self.assertEqual(card.relation_ids, ["rel_chat_to_shop"])
         self.assertEqual(card.status, "active")
+
+
+class PersonalMemoryIngestTests(unittest.TestCase):
+    def test_profile_event_converts_to_normalized_event(self) -> None:
+        source = UserEvent(
+            event_id="evt_chat_001",
+            user_id="local_user",
+            app="微信",
+            package_name="com.tencent.mm",
+            event_time="2026-05-27T09:30:05",
+            source_run="run_wechat",
+            source_step="2",
+            evidence_paths=["runs/wechat/step-2.png"],
+            event_type="chat_context",
+            summary="朋友提到周五吃火锅",
+            entities={"date": ["周五"], "food": ["火锅"]},
+            confidence=0.78,
+            privacy_level="sensitive_summary",
+        )
+
+        events, artifacts = events_from_profile_events([source])
+
+        self.assertEqual(events[0].event_id, "evt_chat_001")
+        self.assertEqual(events[0].artifact_ids, ["raw_evt_chat_001_0"])
+        self.assertEqual(artifacts[0].uri, "runs/wechat/step-2.png")
+        self.assertEqual(events[0].action, "observe")
+
+    def test_profile_relation_converts_to_relation_edge(self) -> None:
+        source = Relation(
+            relation_id="rel_001",
+            relation_type="causes",
+            source_event_id="evt_chat_001",
+            target_event_id="evt_shop_001",
+            description="聊天后搜索火锅店",
+            evidence_event_ids=["evt_chat_001", "evt_shop_001"],
+            confidence=0.72,
+        )
+
+        edges = relations_from_profile_relations([source])
+
+        self.assertEqual(edges[0].relation_id, "rel_001")
+        self.assertEqual(edges[0].relation_type, "causes")
+        self.assertEqual(edges[0].target_event_id, "evt_shop_001")
 
 
 def _sample_artifact() -> RawArtifact:
