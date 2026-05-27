@@ -306,7 +306,7 @@ class PersonalMemoryStore:
                             next_frontier.add(neighbor)
             frontier = next_frontier
             depth += 1
-        return sorted(collected.values(), key=lambda relation: relation.confidence, reverse=True)
+        return sorted(collected.values(), key=lambda relation: (-relation.confidence, relation.relation_id))
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:

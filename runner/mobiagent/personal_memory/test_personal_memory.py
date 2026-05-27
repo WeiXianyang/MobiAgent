@@ -326,6 +326,71 @@ class PersonalMemoryRelationTests(unittest.TestCase):
             self.assertEqual(neighbors[0].relation_id, "rel_chat_to_shop")
             self.assertEqual(neighbors[0].target_event_id, "evt_shop_001")
 
+    def test_relation_lookup_orders_equal_confidence_by_relation_id(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            store = PersonalMemoryStore(Path(tmp) / "memory.db")
+            store.initialize()
+            store.upsert_events([
+                _sample_event("evt_root", "2026-05-25T19:00:00"),
+                _sample_event("evt_mid_a", "2026-05-25T19:01:00"),
+                _sample_event("evt_mid_b", "2026-05-25T19:02:00"),
+                _sample_event("evt_leaf_a", "2026-05-25T19:03:00"),
+                _sample_event("evt_leaf_b", "2026-05-25T19:04:00"),
+            ])
+            store.upsert_relations([
+                RelationEdge(
+                    relation_id="rel_root_to_mid_a",
+                    relation_type="causes",
+                    source_event_id="evt_root",
+                    target_event_id="evt_mid_a",
+                    description="root to mid a",
+                    confidence=0.72,
+                    evidence_event_ids=["evt_root", "evt_mid_a"],
+                ),
+                RelationEdge(
+                    relation_id="rel_root_to_mid_b",
+                    relation_type="causes",
+                    source_event_id="evt_root",
+                    target_event_id="evt_mid_b",
+                    description="root to mid b",
+                    confidence=0.72,
+                    evidence_event_ids=["evt_root", "evt_mid_b"],
+                ),
+                RelationEdge(
+                    relation_id="rel_leaf_from_mid_a",
+                    relation_type="causes",
+                    source_event_id="evt_mid_a",
+                    target_event_id="evt_leaf_a",
+                    description="mid a to leaf a",
+                    confidence=0.72,
+                    evidence_event_ids=["evt_mid_a", "evt_leaf_a"],
+                ),
+                RelationEdge(
+                    relation_id="rel_leaf_from_mid_b",
+                    relation_type="causes",
+                    source_event_id="evt_mid_b",
+                    target_event_id="evt_leaf_b",
+                    description="mid b to leaf b",
+                    confidence=0.72,
+                    evidence_event_ids=["evt_mid_b", "evt_leaf_b"],
+                ),
+            ])
+
+            relation_ids = [
+                relation.relation_id
+                for relation in store.relation_neighborhood("evt_root", max_depth=2)
+            ]
+
+            self.assertEqual(
+                relation_ids,
+                [
+                    "rel_leaf_from_mid_a",
+                    "rel_leaf_from_mid_b",
+                    "rel_root_to_mid_a",
+                    "rel_root_to_mid_b",
+                ],
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
