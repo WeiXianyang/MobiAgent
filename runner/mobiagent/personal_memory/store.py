@@ -457,8 +457,9 @@ class PersonalMemoryStore:
         return hits
 
     def _search_relations(self, conn: sqlite3.Connection, query: AgentMemoryQuery) -> list[MemoryHit]:
-        linked_event_ids = _matching_event_ids(conn, query) if _has_linked_event_filters(query) else None
-        if linked_event_ids is None:
+        has_linked_event_filters = _has_linked_event_filters(query)
+        linked_event_ids = _matching_event_ids(conn, query) if has_linked_event_filters and query.include_explanation else None
+        if not has_linked_event_filters:
             rows = conn.execute(
                 """
                 SELECT relation_id, relation_type, source_event_id, target_event_id,
@@ -484,7 +485,7 @@ class PersonalMemoryStore:
                 """,
                 event_params,
             ).fetchall()
-        require_text_match = bool(query.text) and linked_event_ids is None
+        require_text_match = bool(query.text) and not has_linked_event_filters
         hits: list[MemoryHit] = []
         for row in rows:
             evidence_event_ids = json.loads(row["evidence_event_ids_json"])
@@ -520,7 +521,7 @@ class PersonalMemoryStore:
                         hit_score,
                         linked_event_ids,
                         relation_event_ids,
-                        include_structured_filters=linked_event_ids is not None,
+                        include_structured_filters=has_linked_event_filters,
                     )
                     if query.include_explanation
                     else [],
@@ -530,8 +531,9 @@ class PersonalMemoryStore:
 
     def _search_cards(self, conn: sqlite3.Connection, query: AgentMemoryQuery) -> list[MemoryHit]:
         where, params = _card_filters(query)
-        linked_event_ids = _matching_event_ids(conn, query) if _has_linked_event_filters(query) else None
-        if linked_event_ids is None:
+        has_linked_event_filters = _has_linked_event_filters(query)
+        linked_event_ids = _matching_event_ids(conn, query) if has_linked_event_filters and query.include_explanation else None
+        if not has_linked_event_filters:
             sql = (
                 "SELECT card_id, title, content, event_ids_json, relation_ids_json, "
                 "priority, card_type, status, privacy_level, created_at, updated_at, "
