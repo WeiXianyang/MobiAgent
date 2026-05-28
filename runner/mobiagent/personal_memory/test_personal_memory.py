@@ -527,6 +527,40 @@ def _sample_event(event_id: str = "evt_shop_001", event_time: str = "2026-05-25T
 
 
 class PersonalMemoryStoreTests(unittest.TestCase):
+    def test_initialize_records_schema_version(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "memory.db"
+            store = PersonalMemoryStore(db_path)
+            store.initialize()
+
+            conn = sqlite3.connect(db_path)
+            try:
+                version = conn.execute(
+                    "SELECT value FROM schema_meta WHERE key = 'personal_memory_schema_version'"
+                ).fetchone()[0]
+            finally:
+                conn.close()
+
+        self.assertEqual(version, "2")
+
+    def test_search_uses_lightweight_migration_gate(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "memory.db"
+            store = PersonalMemoryStore(db_path)
+            store.initialize()
+            store.upsert_events([_sample_event("evt_recent", "2026-05-25T20:05:05")])
+
+            hits = store.search(
+                AgentMemoryQuery(
+                    intent="lookup",
+                    text="建材",
+                    include_cards=False,
+                    include_relations=False,
+                )
+            )
+
+        self.assertEqual(hits[0].item_id, "evt_recent")
+
     def test_event_range_query_uses_structured_filters(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             store = PersonalMemoryStore(Path(tmp) / "memory.db")

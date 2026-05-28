@@ -16,6 +16,9 @@ from runner.mobiagent.personal_memory.schemas import (
     RelationEdge,
 )
 
+SCHEMA_VERSION = "2"
+SCHEMA_VERSION_KEY = "personal_memory_schema_version"
+
 
 class PersonalMemoryStore:
     def __init__(self, db_path: Path | str) -> None:
@@ -26,6 +29,11 @@ class PersonalMemoryStore:
         with self._connect() as conn:
             conn.executescript(
                 """
+                CREATE TABLE IF NOT EXISTS schema_meta (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL
+                );
+
                 CREATE TABLE IF NOT EXISTS raw_artifacts (
                     artifact_id TEXT PRIMARY KEY,
                     kind TEXT NOT NULL,
@@ -103,6 +111,17 @@ class PersonalMemoryStore:
             _ensure_column(conn, "memory_cards", "updated_at", "TEXT")
             _ensure_column(conn, "memory_cards", "expires_at", "TEXT")
             _ensure_column(conn, "memory_cards", "lifecycle_json", "TEXT NOT NULL DEFAULT '{}'")
+            _set_schema_version(conn, SCHEMA_VERSION)
+
+    def ensure_initialized(self) -> None:
+        if not self.db_path.exists():
+            self.initialize()
+            return
+
+        with self._connect() as conn:
+            version = _get_schema_version(conn)
+        if version != SCHEMA_VERSION:
+            self.initialize()
 
     def upsert_artifacts(self, artifacts: Iterable[RawArtifact]) -> None:
         with self._connect() as conn:
@@ -273,7 +292,7 @@ class PersonalMemoryStore:
             )
 
     def search(self, query: AgentMemoryQuery) -> list[MemoryHit]:
-        self.initialize()
+        self.ensure_initialized()
         hits = self._search_once(query)
         if hits or not query.semantic_fallback:
             return hits
@@ -809,6 +828,31 @@ def _flatten_text(value: Any) -> str:
 
 def _to_json(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True)
+
+
+def _set_schema_version(conn: sqlite3.Connection, version: str) -> None:
+    conn.execute(
+        """
+        INSERT INTO schema_meta (key, value)
+        VALUES (?, ?)
+        ON CONFLICT(key) DO UPDATE SET
+            value = excluded.value
+        """,
+        (SCHEMA_VERSION_KEY, version),
+    )
+
+
+def _get_schema_version(conn: sqlite3.Connection) -> str | None:
+    try:
+        row = conn.execute(
+            "SELECT value FROM schema_meta WHERE key = ?",
+            (SCHEMA_VERSION_KEY,),
+        ).fetchone()
+    except sqlite3.OperationalError:
+        return None
+    if row is None:
+        return None
+    return str(row["value"])
 
 
 def _ensure_column(conn: sqlite3.Connection, table: str, column: str, definition: str) -> None:
