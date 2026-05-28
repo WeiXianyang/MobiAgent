@@ -801,6 +801,14 @@ class PersonalMemoryStoreTests(unittest.TestCase):
                     "SELECT relation_id FROM relations_fts WHERE relations_fts MATCH ?",
                     ("建材",),
                 ).fetchall()
+                longer_fts_rows = conn.execute(
+                    "SELECT relation_id FROM relations_fts WHERE relations_fts MATCH ?",
+                    ("购物需求",),
+                ).fetchall()
+                relation_description = conn.execute(
+                    "SELECT description FROM relations WHERE relation_id = ?",
+                    ("rel_shop_need",),
+                ).fetchone()[0]
             finally:
                 conn.close()
 
@@ -816,6 +824,8 @@ class PersonalMemoryStoreTests(unittest.TestCase):
             )
 
         self.assertEqual(fts_rows, [("rel_shop_need",)])
+        self.assertEqual(longer_fts_rows, [("rel_shop_need",)])
+        self.assertEqual(relation_description, "浏览建材后形成近期购物需求线索")
         self.assertEqual([hit.item_id for hit in hits], ["rel_shop_need"])
 
     def test_card_search_respects_linked_event_filters(self) -> None:

@@ -1002,8 +1002,12 @@ def _fts_search_text(value: str) -> str:
 
 
 def _cjk_tokens(text: str) -> list[str]:
-    tokens = list(text)
-    tokens.extend(text[index : index + 2] for index in range(max(len(text) - 1, 0)))
+    max_ngram_length = 4
+    tokens = [
+        text[start : start + length]
+        for length in range(1, min(max_ngram_length, len(text)) + 1)
+        for start in range(len(text) - length + 1)
+    ]
     return tokens
 
 
