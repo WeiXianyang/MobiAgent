@@ -825,6 +825,53 @@ class PersonalMemoryStoreTests(unittest.TestCase):
 
             self.assertEqual([hit.item_id for hit in hits], ["card_recent"])
 
+    def test_card_linked_event_filter_uses_index_table(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            store = PersonalMemoryStore(Path(tmp) / "memory.db")
+            store.initialize()
+            store.upsert_events([
+                _sample_event("evt_old", "2026-05-01T08:00:00"),
+                _sample_event("evt_recent", "2026-05-25T20:05:05"),
+            ])
+            store.upsert_cards([
+                MemoryCard(
+                    card_id="card_old",
+                    card_type="shopping_summary",
+                    title="旧建材浏览",
+                    content="旧浏览。",
+                    event_ids=["evt_old"],
+                    relation_ids=[],
+                    priority=0.95,
+                    status="active",
+                    privacy_level="derived",
+                ),
+                MemoryCard(
+                    card_id="card_recent",
+                    card_type="shopping_summary",
+                    title="近期建材浏览",
+                    content="近期浏览。",
+                    event_ids=["evt_recent"],
+                    relation_ids=[],
+                    priority=0.8,
+                    status="active",
+                    privacy_level="derived",
+                ),
+            ])
+
+            hits = store.search(
+                AgentMemoryQuery(
+                    intent="card_range_lookup",
+                    text="",
+                    time_start="2026-05-20T00:00:00",
+                    include_events=False,
+                    include_cards=True,
+                    include_relations=False,
+                    limit=10,
+                )
+            )
+
+        self.assertEqual([hit.item_id for hit in hits], ["card_recent"])
+
     def test_card_lifecycle_fields_are_persisted_and_returned(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             store = PersonalMemoryStore(Path(tmp) / "memory.db")
@@ -1413,6 +1460,49 @@ class PersonalMemoryStoreTests(unittest.TestCase):
         self.assertEqual(raw_hits, [])
         structured = next(item for item in derived_hits[0].explanation_trace if item["stage"] == "structured_filter")
         self.assertEqual(structured["details"]["privacy_levels"], ["derived"])
+
+    def test_relation_linked_event_filter_uses_index_table(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            store = PersonalMemoryStore(Path(tmp) / "memory.db")
+            store.initialize()
+            store.upsert_events([
+                _sample_event("evt_old", "2026-05-01T08:00:00"),
+                _sample_event("evt_recent", "2026-05-25T20:05:05"),
+            ])
+            store.upsert_relations([
+                RelationEdge(
+                    relation_id="rel_old",
+                    relation_type="behavior_causal",
+                    source_event_id="evt_old",
+                    target_event_id=None,
+                    description="旧浏览形成旧购物线索",
+                    confidence=0.95,
+                    evidence_event_ids=["evt_old"],
+                ),
+                RelationEdge(
+                    relation_id="rel_recent",
+                    relation_type="behavior_causal",
+                    source_event_id="evt_recent",
+                    target_event_id=None,
+                    description="近期浏览形成购物线索",
+                    confidence=0.7,
+                    evidence_event_ids=["evt_recent"],
+                ),
+            ])
+
+            hits = store.search(
+                AgentMemoryQuery(
+                    intent="relation_range_lookup",
+                    text="",
+                    time_start="2026-05-20T00:00:00",
+                    include_events=False,
+                    include_cards=False,
+                    include_relations=True,
+                    limit=10,
+                )
+            )
+
+        self.assertEqual([hit.item_id for hit in hits], ["rel_recent"])
 
 
 class PersonalMemoryRelationTests(unittest.TestCase):

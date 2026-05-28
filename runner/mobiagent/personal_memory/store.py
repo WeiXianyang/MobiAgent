@@ -457,15 +457,33 @@ class PersonalMemoryStore:
         return hits
 
     def _search_relations(self, conn: sqlite3.Connection, query: AgentMemoryQuery) -> list[MemoryHit]:
-        rows = conn.execute(
-            """
-            SELECT relation_id, relation_type, source_event_id, target_event_id,
-                   description, confidence, evidence_event_ids_json
-            FROM relations
-            ORDER BY confidence DESC, relation_id
-            """
-        ).fetchall()
         linked_event_ids = _matching_event_ids(conn, query) if _has_linked_event_filters(query) else None
+        if linked_event_ids is None:
+            rows = conn.execute(
+                """
+                SELECT relation_id, relation_type, source_event_id, target_event_id,
+                       description, confidence, evidence_event_ids_json
+                FROM relations
+                ORDER BY confidence DESC, relation_id
+                """
+            ).fetchall()
+        else:
+            event_sql, event_params = _matching_event_filter_sql(query)
+            rows = conn.execute(
+                f"""
+                SELECT DISTINCT relations.relation_id, relations.relation_type,
+                       relations.source_event_id, relations.target_event_id,
+                       relations.description, relations.confidence,
+                       relations.evidence_event_ids_json
+                FROM relations
+                JOIN relation_events
+                  ON relation_events.relation_id = relations.relation_id
+                JOIN ({event_sql}) AS matching_events
+                  ON matching_events.event_id = relation_events.event_id
+                ORDER BY relations.confidence DESC, relations.relation_id
+                """,
+                event_params,
+            ).fetchall()
         require_text_match = bool(query.text) and linked_event_ids is None
         hits: list[MemoryHit] = []
         for row in rows:
@@ -476,8 +494,6 @@ class PersonalMemoryStore:
                 *evidence_event_ids,
             }
             relation_event_ids.discard(None)
-            if linked_event_ids is not None and not linked_event_ids.intersection(relation_event_ids):
-                continue
             score = _relation_score(row, query.text)
             if require_text_match and score <= 0:
                 continue
@@ -514,24 +530,40 @@ class PersonalMemoryStore:
 
     def _search_cards(self, conn: sqlite3.Connection, query: AgentMemoryQuery) -> list[MemoryHit]:
         where, params = _card_filters(query)
-        sql = (
-            "SELECT card_id, title, content, event_ids_json, relation_ids_json, "
-            "priority, card_type, status, privacy_level, created_at, updated_at, "
-            "expires_at, lifecycle_json FROM memory_cards"
-        )
+        linked_event_ids = _matching_event_ids(conn, query) if _has_linked_event_filters(query) else None
+        if linked_event_ids is None:
+            sql = (
+                "SELECT card_id, title, content, event_ids_json, relation_ids_json, "
+                "priority, card_type, status, privacy_level, created_at, updated_at, "
+                "expires_at, lifecycle_json FROM memory_cards"
+            )
+            sql_params = params
+            order_by = "priority DESC, card_id"
+        else:
+            event_sql, event_params = _matching_event_filter_sql(query)
+            sql = (
+                "SELECT DISTINCT memory_cards.card_id, memory_cards.title, memory_cards.content, "
+                "memory_cards.event_ids_json, memory_cards.relation_ids_json, "
+                "memory_cards.priority, memory_cards.card_type, memory_cards.status, "
+                "memory_cards.privacy_level, memory_cards.created_at, memory_cards.updated_at, "
+                "memory_cards.expires_at, memory_cards.lifecycle_json "
+                "FROM memory_cards "
+                "JOIN card_events ON card_events.card_id = memory_cards.card_id "
+                f"JOIN ({event_sql}) AS matching_events "
+                "ON matching_events.event_id = card_events.event_id"
+            )
+            sql_params = [*event_params, *params]
+            order_by = "memory_cards.priority DESC, memory_cards.card_id"
         if where:
             sql += " WHERE " + " AND ".join(where)
-        sql += " ORDER BY priority DESC, card_id"
+        sql += f" ORDER BY {order_by}"
 
         fts_ids = _matching_fts_ids(conn, "cards_fts", "card_id", query.text)
-        rows = conn.execute(sql, params).fetchall()
+        rows = conn.execute(sql, sql_params).fetchall()
         hits = []
-        linked_event_ids = _matching_event_ids(conn, query) if _has_linked_event_filters(query) else None
         require_text_match = bool(query.text) and not _has_card_structured_filters(query)
         for row in rows:
             event_ids = json.loads(row["event_ids_json"])
-            if linked_event_ids is not None and not linked_event_ids.intersection(event_ids):
-                continue
             score = _card_score(row, query.text, fts_ids)
             if require_text_match and score <= 0:
                 continue
@@ -787,11 +819,16 @@ def _has_linked_event_filters(query: AgentMemoryQuery) -> bool:
 
 
 def _matching_event_ids(conn: sqlite3.Connection, query: AgentMemoryQuery) -> set[str]:
+    sql, params = _matching_event_filter_sql(query)
+    return {row["event_id"] for row in conn.execute(sql, params).fetchall()}
+
+
+def _matching_event_filter_sql(query: AgentMemoryQuery) -> tuple[str, list[Any]]:
     where, params = _event_filters(query)
     sql = "SELECT event_id FROM events"
     if where:
         sql += " WHERE " + " AND ".join(where)
-    return {row["event_id"] for row in conn.execute(sql, params).fetchall()}
+    return sql, params
 
 
 def _backfill_card_events(conn: sqlite3.Connection) -> None:
