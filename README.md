@@ -254,12 +254,22 @@ Recent lifecycle-aware additions include:
 - **Expired todo demotion**: lowers the proactive priority of overdue open todos.
 - **Explainable retrieval path**: each hit includes `explanation_trace` with query plan, structured filters, text matches, linked events, lifecycle score adjustments, and final score source.
 
+Lightweight storage design:
+
+- `events` is the primary timeline table; `raw_artifacts` stores evidence references instead of duplicating screenshots or OCR blobs.
+- `memory_cards` stores compact profile, todo, and weekly-summary cards for proactive service.
+- `card_events` and `relation_events` are link-index tables, so time/app/task/privacy filters can use SQL joins instead of scanning JSON arrays.
+- `events_fts`, `cards_fts`, and `relations_fts` provide local full-text recall; relation FTS expands short CJK descriptions for substring lookup while keeping canonical relation rows unchanged.
+- `schema_meta` records the store format version and triggers lightweight rebuilds of derived indexes when the schema changes.
+- `AgentMemoryQuery.include_explanation=False` enables a low-latency path that skips `explanation_trace` construction for production or benchmark queries.
+
 Core commands:
 
 ```bash
 python -m runner.mobiagent.personal_memory.cli build --db memory.db --events events.json --artifacts artifacts.json --relations relations.json --profiles profile.json --todos todos.json
 python -m runner.mobiagent.profile_pipeline.cli build-personal-memory --events-json events.jsonl --relations-json relations.jsonl --profiles-json profile.json --todos-json todos.json --db memory.db
 python -m runner.mobiagent.personal_memory.cli search --db memory.db --query "generate a profile report for the past week"
+python -m runner.mobiagent.personal_memory.benchmark_storage --db .tmp/personal_memory_benchmark.db --events 1000 --cards 200 --relations 200
 ```
 
 #### 5. Launch Agent Runner

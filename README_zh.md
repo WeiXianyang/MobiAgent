@@ -249,12 +249,22 @@ VectorDB 或 Mem0/Milvus 不再被视为唯一记忆后端。它们适合作为�
 - **过期待办降权**：过期但仍打开的 todo 会自动降低主动服务优先级。
 - **可解释检索路径**：每个 hit 返回 `explanation_trace`，说明查询计划、结构化过滤、文本匹配、关系链接、生命周期调分和最终分数来源。
 
+轻量化存储结构：
+
+- `events` 是主事件时间线；`raw_artifacts` 只保存证据引用，避免把截图或 OCR 大块内容重复塞进主检索表。
+- `memory_cards` 保存压缩后的画像、待办和周报卡片，供主动服务快速读取。
+- `card_events` 和 `relation_events` 是轻量链接索引表，时间、App、任务、隐私级别等过滤可以走 SQL join，不需要扫描 JSON 数组。
+- `events_fts`、`cards_fts` 和 `relations_fts` 提供本地全文检索；关系 FTS 会对短中文关系描述做子串扩展，保持原始 relation 行不变。
+- `schema_meta` 记录存储格式版本，结构变化时只重建派生索引，不需要引入外部数据库迁移服务。
+- `AgentMemoryQuery.include_explanation=False` 可关闭 `explanation_trace` 构造，用于生产或 benchmark 的低延迟检索路径。
+
 核心命令：
 
 ```powershell
 python -m runner.mobiagent.personal_memory.cli build --db memory.db --events events.json --artifacts artifacts.json --relations relations.json --profiles profile.json --todos todos.json
 python -m runner.mobiagent.profile_pipeline.cli build-personal-memory --events-json events.jsonl --relations-json relations.jsonl --profiles-json profile.json --todos-json todos.json --db memory.db
 python -m runner.mobiagent.personal_memory.cli search --db memory.db --query "生成过去一周画像报告"
+python -m runner.mobiagent.personal_memory.benchmark_storage --db .tmp\personal_memory_benchmark.db --events 1000 --cards 200 --relations 200
 ```
 
 ##### 4.2 经验记忆
