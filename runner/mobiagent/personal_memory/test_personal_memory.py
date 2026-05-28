@@ -88,6 +88,27 @@ class PersonalMemorySchemaTests(unittest.TestCase):
         self.assertEqual(hit.layer, "card")
         self.assertEqual(hit.relation_ids, ["rel_chat_to_shop"])
 
+    def test_agent_memory_query_positional_limit_remains_compatible(self) -> None:
+        query = AgentMemoryQuery(
+            "lookup",
+            "建材",
+            None,
+            None,
+            [],
+            [],
+            [],
+            [],
+            [],
+            True,
+            False,
+            True,
+            False,
+            25,
+        )
+
+        self.assertEqual(query.limit, 25)
+        self.assertTrue(query.include_explanation)
+
     def test_relation_and_card_preserve_causal_trace(self) -> None:
         edge = RelationEdge(
             relation_id="rel_chat_to_shop",

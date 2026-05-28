@@ -87,8 +87,8 @@ class AgentMemoryQuery:
     include_relations: bool = False
     include_cards: bool = True
     semantic_fallback: bool = False
-    include_explanation: bool = True
     limit: int = 10
+    include_explanation: bool = True
 
 
 @dataclass(frozen=True)
