@@ -226,6 +226,7 @@ class PersonalMemoryStore:
 
     def upsert_relations(self, relations: Iterable[RelationEdge]) -> None:
         relations_list = list(relations)
+        latest_relations = {relation.relation_id: relation for relation in relations_list}
         relation_rows = [
             (
                 relation.relation_id,
@@ -240,7 +241,7 @@ class PersonalMemoryStore:
         ]
         relation_event_rows = [
             (relation.relation_id, event_id)
-            for relation in relations_list
+            for relation in latest_relations.values()
             for event_id in _unique_relation_event_ids(relation)
         ]
 
@@ -266,15 +267,15 @@ class PersonalMemoryStore:
                 [(relation.relation_id,) for relation in relations_list],
             )
             conn.executemany(
-                "INSERT INTO relation_events(relation_id, event_id) VALUES (?, ?)",
-                relation_event_rows,
+                "INSERT OR IGNORE INTO relation_events(relation_id, event_id) VALUES (?, ?)",
+                list(dict.fromkeys(relation_event_rows)),
             )
 
     def upsert_cards(self, cards: Iterable[MemoryCard]) -> None:
         cards_list = list(cards)
+        latest_cards = {card.card_id: card for card in cards_list}
         card_rows = []
         fts_rows = []
-        card_event_rows = []
         for card in cards_list:
             card_rows.append(
                 (
@@ -294,7 +295,11 @@ class PersonalMemoryStore:
                 )
             )
             fts_rows.append((card.card_id, card.title, card.content))
-            card_event_rows.extend((card.card_id, event_id) for event_id in _unique_event_ids(card.event_ids))
+        card_event_rows = [
+            (card.card_id, event_id)
+            for card in latest_cards.values()
+            for event_id in _unique_event_ids(card.event_ids)
+        ]
 
         with self._connect() as conn:
             conn.executemany(
@@ -330,8 +335,8 @@ class PersonalMemoryStore:
                 [(card.card_id,) for card in cards_list],
             )
             conn.executemany(
-                "INSERT INTO card_events(card_id, event_id) VALUES (?, ?)",
-                card_event_rows,
+                "INSERT OR IGNORE INTO card_events(card_id, event_id) VALUES (?, ?)",
+                list(dict.fromkeys(card_event_rows)),
             )
 
     def search(self, query: AgentMemoryQuery) -> list[MemoryHit]:

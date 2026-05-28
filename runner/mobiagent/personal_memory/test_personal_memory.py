@@ -585,6 +585,51 @@ class PersonalMemoryStoreTests(unittest.TestCase):
 
         self.assertEqual(rows, [("card_recent", "evt_new")])
 
+    def test_card_event_index_handles_duplicate_card_ids_in_one_upsert_batch(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "memory.db"
+            store = PersonalMemoryStore(db_path)
+            store.initialize()
+            store.upsert_cards([
+                MemoryCard(
+                    card_id="card_recent",
+                    card_type="shopping_summary",
+                    title="建材浏览摘要",
+                    content="用户浏览建材商品。",
+                    event_ids=["evt_old", "evt_current"],
+                    relation_ids=[],
+                    priority=0.8,
+                    status="active",
+                    privacy_level="derived",
+                ),
+                MemoryCard(
+                    card_id="card_recent",
+                    card_type="shopping_summary",
+                    title="建材浏览摘要",
+                    content="用户浏览当前建材商品。",
+                    event_ids=["evt_current", "evt_current"],
+                    relation_ids=[],
+                    priority=0.9,
+                    status="active",
+                    privacy_level="derived",
+                ),
+            ])
+
+            conn = sqlite3.connect(db_path)
+            try:
+                card_events = conn.execute(
+                    "SELECT card_id, event_id FROM card_events ORDER BY card_id, event_id"
+                ).fetchall()
+                event_ids_json = conn.execute(
+                    "SELECT event_ids_json FROM memory_cards WHERE card_id = ?",
+                    ("card_recent",),
+                ).fetchone()[0]
+            finally:
+                conn.close()
+
+        self.assertEqual(card_events, [("card_recent", "evt_current")])
+        self.assertEqual(json.loads(event_ids_json), ["evt_current", "evt_current"])
+
     def test_relation_event_index_table_is_populated_and_updated(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             db_path = Path(tmp) / "memory.db"
@@ -622,6 +667,53 @@ class PersonalMemoryStoreTests(unittest.TestCase):
                 conn.close()
 
         self.assertEqual(rows, [("rel_recent", "evt_new")])
+
+    def test_relation_event_index_handles_duplicate_relation_ids_in_one_upsert_batch(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "memory.db"
+            store = PersonalMemoryStore(db_path)
+            store.initialize()
+            store.upsert_relations([
+                RelationEdge(
+                    relation_id="rel_recent",
+                    relation_type="behavior_causal",
+                    source_event_id="evt_old",
+                    target_event_id="evt_current",
+                    description="旧浏览形成购物线索",
+                    confidence=0.6,
+                    evidence_event_ids=["evt_current"],
+                ),
+                RelationEdge(
+                    relation_id="rel_recent",
+                    relation_type="behavior_causal",
+                    source_event_id="evt_current",
+                    target_event_id=None,
+                    description="当前浏览形成购物线索",
+                    confidence=0.7,
+                    evidence_event_ids=["evt_current", "evt_current"],
+                ),
+            ])
+
+            conn = sqlite3.connect(db_path)
+            try:
+                relation_events = conn.execute(
+                    "SELECT relation_id, event_id FROM relation_events ORDER BY relation_id, event_id"
+                ).fetchall()
+                relation_row = conn.execute(
+                    """
+                    SELECT source_event_id, target_event_id, evidence_event_ids_json
+                    FROM relations
+                    WHERE relation_id = ?
+                    """,
+                    ("rel_recent",),
+                ).fetchone()
+            finally:
+                conn.close()
+
+        self.assertEqual(relation_events, [("rel_recent", "evt_current")])
+        self.assertEqual(relation_row[0], "evt_current")
+        self.assertIsNone(relation_row[1])
+        self.assertEqual(json.loads(relation_row[2]), ["evt_current", "evt_current"])
 
     def test_search_uses_lightweight_migration_gate(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
