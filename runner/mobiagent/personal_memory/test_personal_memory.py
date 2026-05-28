@@ -927,6 +927,115 @@ class PersonalMemoryStoreTests(unittest.TestCase):
             ],
         )
 
+    def test_legacy_v2_migration_rebuilds_stale_event_link_indexes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "memory.db"
+            conn = sqlite3.connect(db_path)
+            conn.executescript(
+                """
+                CREATE TABLE schema_meta (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL
+                );
+                CREATE TABLE memory_cards (
+                    card_id TEXT PRIMARY KEY,
+                    card_type TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    content TEXT NOT NULL,
+                    event_ids_json TEXT NOT NULL,
+                    relation_ids_json TEXT NOT NULL,
+                    priority REAL NOT NULL,
+                    status TEXT NOT NULL,
+                    privacy_level TEXT NOT NULL,
+                    created_at TEXT,
+                    updated_at TEXT,
+                    expires_at TEXT,
+                    lifecycle_json TEXT NOT NULL DEFAULT '{}'
+                );
+                CREATE TABLE relations (
+                    relation_id TEXT PRIMARY KEY,
+                    relation_type TEXT NOT NULL,
+                    source_event_id TEXT NOT NULL,
+                    target_event_id TEXT,
+                    description TEXT NOT NULL,
+                    confidence REAL NOT NULL,
+                    evidence_event_ids_json TEXT NOT NULL
+                );
+                CREATE TABLE card_events (
+                    card_id TEXT NOT NULL,
+                    event_id TEXT NOT NULL,
+                    PRIMARY KEY (card_id, event_id)
+                );
+                CREATE TABLE relation_events (
+                    relation_id TEXT NOT NULL,
+                    event_id TEXT NOT NULL,
+                    PRIMARY KEY (relation_id, event_id)
+                );
+                INSERT INTO schema_meta (key, value)
+                VALUES ('personal_memory_schema_version', '2');
+                INSERT INTO card_events (card_id, event_id)
+                VALUES ('card_legacy', 'evt_stale');
+                INSERT INTO relation_events (relation_id, event_id)
+                VALUES ('rel_legacy', 'evt_stale');
+                """
+            )
+            conn.execute(
+                """
+                INSERT INTO memory_cards (
+                    card_id, card_type, title, content, event_ids_json,
+                    relation_ids_json, priority, status, privacy_level, lifecycle_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    "card_legacy",
+                    "profile",
+                    "建材浏览摘要",
+                    "用户浏览建材商品。",
+                    '["evt_current", "evt_current"]',
+                    "[]",
+                    0.8,
+                    "active",
+                    "derived",
+                    "{}",
+                ),
+            )
+            conn.execute(
+                """
+                INSERT INTO relations (
+                    relation_id, relation_type, source_event_id, target_event_id,
+                    description, confidence, evidence_event_ids_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    "rel_legacy",
+                    "behavior_causal",
+                    "evt_current",
+                    None,
+                    "近期浏览形成购物线索",
+                    0.7,
+                    '["evt_current"]',
+                ),
+            )
+            conn.commit()
+            conn.close()
+
+            store = PersonalMemoryStore(db_path)
+            store.ensure_initialized()
+
+            conn = sqlite3.connect(db_path)
+            try:
+                card_rows = conn.execute(
+                    "SELECT card_id, event_id FROM card_events ORDER BY card_id, event_id"
+                ).fetchall()
+                relation_rows = conn.execute(
+                    "SELECT relation_id, event_id FROM relation_events ORDER BY relation_id, event_id"
+                ).fetchall()
+            finally:
+                conn.close()
+
+        self.assertEqual(card_rows, [("card_legacy", "evt_current")])
+        self.assertEqual(relation_rows, [("rel_legacy", "evt_current")])
+
     def test_task_resume_plan_falls_back_to_recent_candidates_when_text_misses(self) -> None:
         from runner.mobiagent.personal_memory.planner import plan_memory_query
 

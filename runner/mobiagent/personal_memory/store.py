@@ -791,6 +791,7 @@ def _matching_event_ids(conn: sqlite3.Connection, query: AgentMemoryQuery) -> se
 
 def _backfill_card_events(conn: sqlite3.Connection) -> None:
     rows = conn.execute("SELECT card_id, event_ids_json FROM memory_cards").fetchall()
+    conn.execute("DELETE FROM card_events")
     conn.executemany(
         "INSERT OR IGNORE INTO card_events(card_id, event_id) VALUES (?, ?)",
         [
@@ -808,6 +809,7 @@ def _backfill_relation_events(conn: sqlite3.Connection) -> None:
         FROM relations
         """
     ).fetchall()
+    conn.execute("DELETE FROM relation_events")
     conn.executemany(
         "INSERT OR IGNORE INTO relation_events(relation_id, event_id) VALUES (?, ?)",
         [
