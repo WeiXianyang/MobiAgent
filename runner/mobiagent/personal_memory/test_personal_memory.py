@@ -541,7 +541,7 @@ class PersonalMemoryStoreTests(unittest.TestCase):
             finally:
                 conn.close()
 
-        self.assertEqual(version, "5")
+        self.assertEqual(version, "6")
 
     def test_card_event_index_table_is_populated_and_updated(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -813,6 +813,14 @@ class PersonalMemoryStoreTests(unittest.TestCase):
                     "SELECT relation_id FROM relations_fts WHERE relations_fts MATCH ?",
                     ("购物需求线索",),
                 ).fetchall()
+                formed_need_clue_fts_rows = conn.execute(
+                    "SELECT relation_id FROM relations_fts WHERE relations_fts MATCH ?",
+                    ("形成近期购物需求线索",),
+                ).fetchall()
+                material_formed_need_fts_rows = conn.execute(
+                    "SELECT relation_id FROM relations_fts WHERE relations_fts MATCH ?",
+                    ("建材后形成近期购物",),
+                ).fetchall()
                 relation_description = conn.execute(
                     "SELECT description FROM relations WHERE relation_id = ?",
                     ("rel_shop_need",),
@@ -835,6 +843,8 @@ class PersonalMemoryStoreTests(unittest.TestCase):
         self.assertEqual(longer_fts_rows, [("rel_shop_need",)])
         self.assertEqual(recent_need_fts_rows, [("rel_shop_need",)])
         self.assertEqual(need_clue_fts_rows, [("rel_shop_need",)])
+        self.assertEqual(formed_need_clue_fts_rows, [("rel_shop_need",)])
+        self.assertEqual(material_formed_need_fts_rows, [("rel_shop_need",)])
         self.assertEqual(relation_description, "浏览建材后形成近期购物需求线索")
         self.assertEqual([hit.item_id for hit in hits], ["rel_shop_need"])
 
@@ -1168,7 +1178,7 @@ class PersonalMemoryStoreTests(unittest.TestCase):
             finally:
                 conn.close()
 
-        self.assertEqual(version, "5")
+        self.assertEqual(version, "6")
         self.assertEqual(card_rows, [("card_legacy", "evt_recent")])
         self.assertEqual(
             relation_rows,
@@ -1260,7 +1270,91 @@ class PersonalMemoryStoreTests(unittest.TestCase):
                 conn.close()
 
         self.assertEqual(before_rows, [])
-        self.assertEqual(version, "5")
+        self.assertEqual(version, "6")
+        self.assertEqual(after_rows, [("rel_shop_need",)])
+        self.assertEqual(relation_description, "浏览建材后形成近期购物需求线索")
+
+    def test_v5_migration_rebuilds_relation_fts_for_cjk_substrings(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "memory.db"
+            conn = sqlite3.connect(db_path)
+            conn.executescript(
+                """
+                CREATE TABLE schema_meta (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL
+                );
+                CREATE TABLE relations (
+                    relation_id TEXT PRIMARY KEY,
+                    relation_type TEXT NOT NULL,
+                    source_event_id TEXT NOT NULL,
+                    target_event_id TEXT,
+                    description TEXT NOT NULL,
+                    confidence REAL NOT NULL,
+                    evidence_event_ids_json TEXT NOT NULL
+                );
+                CREATE VIRTUAL TABLE relations_fts USING fts5(
+                    relation_id UNINDEXED,
+                    relation_type,
+                    description
+                );
+                INSERT INTO schema_meta (key, value)
+                VALUES ('personal_memory_schema_version', '5');
+                """
+            )
+            conn.execute(
+                """
+                INSERT INTO relations (
+                    relation_id, relation_type, source_event_id, target_event_id,
+                    description, confidence, evidence_event_ids_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    "rel_shop_need",
+                    "behavior_causal",
+                    "evt_shop_001",
+                    None,
+                    "浏览建材后形成近期购物需求线索",
+                    0.74,
+                    '["evt_shop_001"]',
+                ),
+            )
+            conn.execute(
+                "INSERT INTO relations_fts(relation_id, relation_type, description) VALUES (?, ?, ?)",
+                (
+                    "rel_shop_need",
+                    "behavior_causal",
+                    "购物需求 购物需求线索 浏览建材后形成近期购物需求线索",
+                ),
+            )
+            before_rows = conn.execute(
+                "SELECT relation_id FROM relations_fts WHERE relations_fts MATCH ?",
+                ("形成近期购物需求线索",),
+            ).fetchall()
+            conn.commit()
+            conn.close()
+
+            store = PersonalMemoryStore(db_path)
+            store.ensure_initialized()
+
+            conn = sqlite3.connect(db_path)
+            try:
+                version = conn.execute(
+                    "SELECT value FROM schema_meta WHERE key = 'personal_memory_schema_version'"
+                ).fetchone()[0]
+                after_rows = conn.execute(
+                    "SELECT relation_id FROM relations_fts WHERE relations_fts MATCH ?",
+                    ("形成近期购物需求线索",),
+                ).fetchall()
+                relation_description = conn.execute(
+                    "SELECT description FROM relations WHERE relation_id = ?",
+                    ("rel_shop_need",),
+                ).fetchone()[0]
+            finally:
+                conn.close()
+
+        self.assertEqual(before_rows, [])
+        self.assertEqual(version, "6")
         self.assertEqual(after_rows, [("rel_shop_need",)])
         self.assertEqual(relation_description, "浏览建材后形成近期购物需求线索")
 

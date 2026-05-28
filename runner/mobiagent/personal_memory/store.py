@@ -16,7 +16,7 @@ from runner.mobiagent.personal_memory.schemas import (
     RelationEdge,
 )
 
-SCHEMA_VERSION = "5"
+SCHEMA_VERSION = "6"
 SCHEMA_VERSION_KEY = "personal_memory_schema_version"
 
 
@@ -1002,13 +1002,15 @@ def _fts_search_text(value: str) -> str:
 
 
 def _cjk_tokens(text: str) -> list[str]:
-    max_ngram_length = 8
+    max_full_substring_length = 32
+    max_bounded_substring_length = 12
+    max_ngram_length = len(text) if len(text) <= max_full_substring_length else max_bounded_substring_length
     tokens = [
         text[start : start + length]
         for length in range(1, min(max_ngram_length, len(text)) + 1)
         for start in range(len(text) - length + 1)
     ]
-    if len(text) > max_ngram_length:
+    if len(text) > max_full_substring_length:
         tokens.append(text)
     return tokens
 
