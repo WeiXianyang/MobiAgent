@@ -87,6 +87,18 @@ class PersonalMemoryStore:
                     lifecycle_json TEXT NOT NULL DEFAULT '{}'
                 );
 
+                CREATE TABLE IF NOT EXISTS card_events (
+                    card_id TEXT NOT NULL,
+                    event_id TEXT NOT NULL,
+                    PRIMARY KEY (card_id, event_id)
+                );
+
+                CREATE TABLE IF NOT EXISTS relation_events (
+                    relation_id TEXT NOT NULL,
+                    event_id TEXT NOT NULL,
+                    PRIMARY KEY (relation_id, event_id)
+                );
+
                 CREATE INDEX IF NOT EXISTS idx_events_event_time ON events(event_time);
                 CREATE INDEX IF NOT EXISTS idx_events_app_time ON events(app, event_time);
                 CREATE INDEX IF NOT EXISTS idx_events_event_type_time ON events(event_type, event_time);
@@ -94,6 +106,8 @@ class PersonalMemoryStore:
                 CREATE INDEX IF NOT EXISTS idx_relations_source ON relations(source_event_id);
                 CREATE INDEX IF NOT EXISTS idx_relations_target ON relations(target_event_id);
                 CREATE INDEX IF NOT EXISTS idx_cards_type_priority ON memory_cards(card_type, priority);
+                CREATE INDEX IF NOT EXISTS idx_card_events_event ON card_events(event_id, card_id);
+                CREATE INDEX IF NOT EXISTS idx_relation_events_event ON relation_events(event_id, relation_id);
 
                 CREATE VIRTUAL TABLE IF NOT EXISTS events_fts USING fts5(
                     event_id UNINDEXED,
@@ -209,6 +223,25 @@ class PersonalMemoryStore:
             )
 
     def upsert_relations(self, relations: Iterable[RelationEdge]) -> None:
+        relations_list = list(relations)
+        relation_rows = [
+            (
+                relation.relation_id,
+                relation.relation_type,
+                relation.source_event_id,
+                relation.target_event_id,
+                relation.description,
+                relation.confidence,
+                _to_json(relation.evidence_event_ids),
+            )
+            for relation in relations_list
+        ]
+        relation_event_rows = [
+            (relation.relation_id, event_id)
+            for relation in relations_list
+            for event_id in _unique_relation_event_ids(relation)
+        ]
+
         with self._connect() as conn:
             conn.executemany(
                 """
@@ -224,24 +257,23 @@ class PersonalMemoryStore:
                     confidence = excluded.confidence,
                     evidence_event_ids_json = excluded.evidence_event_ids_json
                 """,
-                [
-                    (
-                        relation.relation_id,
-                        relation.relation_type,
-                        relation.source_event_id,
-                        relation.target_event_id,
-                        relation.description,
-                        relation.confidence,
-                        _to_json(relation.evidence_event_ids),
-                    )
-                    for relation in relations
-                ],
+                relation_rows,
+            )
+            conn.executemany(
+                "DELETE FROM relation_events WHERE relation_id = ?",
+                [(relation.relation_id,) for relation in relations_list],
+            )
+            conn.executemany(
+                "INSERT INTO relation_events(relation_id, event_id) VALUES (?, ?)",
+                relation_event_rows,
             )
 
     def upsert_cards(self, cards: Iterable[MemoryCard]) -> None:
+        cards_list = list(cards)
         card_rows = []
         fts_rows = []
-        for card in cards:
+        card_event_rows = []
+        for card in cards_list:
             card_rows.append(
                 (
                     card.card_id,
@@ -260,6 +292,7 @@ class PersonalMemoryStore:
                 )
             )
             fts_rows.append((card.card_id, card.title, card.content))
+            card_event_rows.extend((card.card_id, event_id) for event_id in dict.fromkeys(card.event_ids))
 
         with self._connect() as conn:
             conn.executemany(
@@ -289,6 +322,14 @@ class PersonalMemoryStore:
             conn.executemany(
                 "INSERT INTO cards_fts(card_id, title, content) VALUES (?, ?, ?)",
                 fts_rows,
+            )
+            conn.executemany(
+                "DELETE FROM card_events WHERE card_id = ?",
+                [(card.card_id,) for card in cards_list],
+            )
+            conn.executemany(
+                "INSERT INTO card_events(card_id, event_id) VALUES (?, ?)",
+                card_event_rows,
             )
 
     def search(self, query: AgentMemoryQuery) -> list[MemoryHit]:
@@ -744,6 +785,14 @@ def _matching_event_ids(conn: sqlite3.Connection, query: AgentMemoryQuery) -> se
     if where:
         sql += " WHERE " + " AND ".join(where)
     return {row["event_id"] for row in conn.execute(sql, params).fetchall()}
+
+
+def _unique_relation_event_ids(relation: RelationEdge) -> list[str]:
+    event_ids = [relation.source_event_id]
+    if relation.target_event_id is not None:
+        event_ids.append(relation.target_event_id)
+    event_ids.extend(relation.evidence_event_ids)
+    return list(dict.fromkeys(event_ids))
 
 
 def _range_filter(

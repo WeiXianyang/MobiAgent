@@ -543,6 +543,62 @@ class PersonalMemoryStoreTests(unittest.TestCase):
 
         self.assertEqual(version, "2")
 
+    def test_card_event_index_table_is_populated_and_updated(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "memory.db"
+            store = PersonalMemoryStore(db_path)
+            store.initialize()
+            store.upsert_cards([
+                MemoryCard(
+                    card_id="card_recent",
+                    card_type="shopping_summary",
+                    title="建材浏览摘要",
+                    content="用户浏览建材商品。",
+                    event_ids=["evt_recent", "evt_recent"],
+                    relation_ids=[],
+                    priority=0.8,
+                    status="active",
+                    privacy_level="derived",
+                )
+            ])
+
+            conn = sqlite3.connect(db_path)
+            try:
+                rows = conn.execute(
+                    "SELECT card_id, event_id FROM card_events ORDER BY card_id, event_id"
+                ).fetchall()
+            finally:
+                conn.close()
+
+        self.assertEqual(rows, [("card_recent", "evt_recent")])
+
+    def test_relation_event_index_table_is_populated_and_updated(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "memory.db"
+            store = PersonalMemoryStore(db_path)
+            store.initialize()
+            store.upsert_relations([
+                RelationEdge(
+                    relation_id="rel_recent",
+                    relation_type="behavior_causal",
+                    source_event_id="evt_recent",
+                    target_event_id=None,
+                    description="近期浏览形成购物线索",
+                    confidence=0.7,
+                    evidence_event_ids=["evt_recent"],
+                )
+            ])
+
+            conn = sqlite3.connect(db_path)
+            try:
+                rows = conn.execute(
+                    "SELECT relation_id, event_id FROM relation_events ORDER BY relation_id, event_id"
+                ).fetchall()
+            finally:
+                conn.close()
+
+        self.assertEqual(rows, [("rel_recent", "evt_recent")])
+
     def test_search_uses_lightweight_migration_gate(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             db_path = Path(tmp) / "memory.db"
