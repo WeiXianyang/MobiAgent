@@ -2234,6 +2234,26 @@ class PersonalMemoryCliTests(unittest.TestCase):
         self.assertIn("card_todo_todo_shop", [hit.item_id for hit in hits])
         self.assertTrue(any(hit.metadata["card_type"] == "weekly_summary" for hit in hits))
 
+    def test_storage_benchmark_smoke_runs_with_small_dataset(self) -> None:
+        from runner.mobiagent.personal_memory.benchmark_storage import run_benchmark
+
+        with tempfile.TemporaryDirectory() as tmp:
+            result = run_benchmark(
+                Path(tmp) / "benchmark.db",
+                event_count=50,
+                card_count=10,
+                relation_count=10,
+                iterations=1,
+            )
+
+        self.assertEqual(result["event_count"], 50)
+        self.assertEqual(result["card_count"], 10)
+        self.assertEqual(result["relation_count"], 10)
+        self.assertGreater(result["db_size_bytes"], 0)
+        self.assertIn("event_query_ms", result)
+        self.assertIn("card_query_ms", result)
+        self.assertIn("relation_query_ms", result)
+
     def test_cli_search_limit_preserves_planner_default_unless_explicit(self) -> None:
         parser = build_parser()
 
