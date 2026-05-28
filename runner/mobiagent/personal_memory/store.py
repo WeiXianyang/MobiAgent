@@ -16,7 +16,7 @@ from runner.mobiagent.personal_memory.schemas import (
     RelationEdge,
 )
 
-SCHEMA_VERSION = "2"
+SCHEMA_VERSION = "3"
 SCHEMA_VERSION_KEY = "personal_memory_schema_version"
 
 
@@ -125,6 +125,8 @@ class PersonalMemoryStore:
             _ensure_column(conn, "memory_cards", "updated_at", "TEXT")
             _ensure_column(conn, "memory_cards", "expires_at", "TEXT")
             _ensure_column(conn, "memory_cards", "lifecycle_json", "TEXT NOT NULL DEFAULT '{}'")
+            _backfill_card_events(conn)
+            _backfill_relation_events(conn)
             _set_schema_version(conn, SCHEMA_VERSION)
 
     def ensure_initialized(self) -> None:
@@ -292,7 +294,7 @@ class PersonalMemoryStore:
                 )
             )
             fts_rows.append((card.card_id, card.title, card.content))
-            card_event_rows.extend((card.card_id, event_id) for event_id in dict.fromkeys(card.event_ids))
+            card_event_rows.extend((card.card_id, event_id) for event_id in _unique_event_ids(card.event_ids))
 
         with self._connect() as conn:
             conn.executemany(
@@ -787,12 +789,47 @@ def _matching_event_ids(conn: sqlite3.Connection, query: AgentMemoryQuery) -> se
     return {row["event_id"] for row in conn.execute(sql, params).fetchall()}
 
 
+def _backfill_card_events(conn: sqlite3.Connection) -> None:
+    rows = conn.execute("SELECT card_id, event_ids_json FROM memory_cards").fetchall()
+    conn.executemany(
+        "INSERT OR IGNORE INTO card_events(card_id, event_id) VALUES (?, ?)",
+        [
+            (row["card_id"], event_id)
+            for row in rows
+            for event_id in _unique_event_ids(json.loads(row["event_ids_json"]))
+        ],
+    )
+
+
+def _backfill_relation_events(conn: sqlite3.Connection) -> None:
+    rows = conn.execute(
+        """
+        SELECT relation_id, source_event_id, target_event_id, evidence_event_ids_json
+        FROM relations
+        """
+    ).fetchall()
+    conn.executemany(
+        "INSERT OR IGNORE INTO relation_events(relation_id, event_id) VALUES (?, ?)",
+        [
+            (row["relation_id"], event_id)
+            for row in rows
+            for event_id in _unique_event_ids(
+                [
+                    row["source_event_id"],
+                    row["target_event_id"],
+                    *json.loads(row["evidence_event_ids_json"]),
+                ]
+            )
+        ],
+    )
+
+
+def _unique_event_ids(event_ids: Iterable[str | None]) -> list[str]:
+    return list(dict.fromkeys(event_id for event_id in event_ids if event_id is not None))
+
+
 def _unique_relation_event_ids(relation: RelationEdge) -> list[str]:
-    event_ids = [relation.source_event_id]
-    if relation.target_event_id is not None:
-        event_ids.append(relation.target_event_id)
-    event_ids.extend(relation.evidence_event_ids)
-    return list(dict.fromkeys(event_ids))
+    return _unique_event_ids([relation.source_event_id, relation.target_event_id, *relation.evidence_event_ids])
 
 
 def _range_filter(

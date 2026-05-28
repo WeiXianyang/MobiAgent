@@ -541,7 +541,7 @@ class PersonalMemoryStoreTests(unittest.TestCase):
             finally:
                 conn.close()
 
-        self.assertEqual(version, "2")
+        self.assertEqual(version, "3")
 
     def test_card_event_index_table_is_populated_and_updated(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -561,6 +561,19 @@ class PersonalMemoryStoreTests(unittest.TestCase):
                     privacy_level="derived",
                 )
             ])
+            store.upsert_cards([
+                MemoryCard(
+                    card_id="card_recent",
+                    card_type="shopping_summary",
+                    title="建材浏览摘要",
+                    content="用户浏览新建材商品。",
+                    event_ids=["evt_new"],
+                    relation_ids=[],
+                    priority=0.8,
+                    status="active",
+                    privacy_level="derived",
+                )
+            ])
 
             conn = sqlite3.connect(db_path)
             try:
@@ -570,7 +583,7 @@ class PersonalMemoryStoreTests(unittest.TestCase):
             finally:
                 conn.close()
 
-        self.assertEqual(rows, [("card_recent", "evt_recent")])
+        self.assertEqual(rows, [("card_recent", "evt_new")])
 
     def test_relation_event_index_table_is_populated_and_updated(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -588,6 +601,17 @@ class PersonalMemoryStoreTests(unittest.TestCase):
                     evidence_event_ids=["evt_recent"],
                 )
             ])
+            store.upsert_relations([
+                RelationEdge(
+                    relation_id="rel_recent",
+                    relation_type="behavior_causal",
+                    source_event_id="evt_new",
+                    target_event_id=None,
+                    description="新浏览形成购物线索",
+                    confidence=0.7,
+                    evidence_event_ids=["evt_new"],
+                )
+            ])
 
             conn = sqlite3.connect(db_path)
             try:
@@ -597,7 +621,7 @@ class PersonalMemoryStoreTests(unittest.TestCase):
             finally:
                 conn.close()
 
-        self.assertEqual(rows, [("rel_recent", "evt_recent")])
+        self.assertEqual(rows, [("rel_recent", "evt_new")])
 
     def test_search_uses_lightweight_migration_gate(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -796,6 +820,112 @@ class PersonalMemoryStoreTests(unittest.TestCase):
         self.assertIsNone(hits[0].metadata["updated_at"])
         self.assertIsNone(hits[0].metadata["expires_at"])
         self.assertEqual(hits[0].metadata["lifecycle"], {})
+
+    def test_legacy_v2_migration_backfills_event_link_indexes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "memory.db"
+            conn = sqlite3.connect(db_path)
+            conn.executescript(
+                """
+                CREATE TABLE schema_meta (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL
+                );
+                CREATE TABLE memory_cards (
+                    card_id TEXT PRIMARY KEY,
+                    card_type TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    content TEXT NOT NULL,
+                    event_ids_json TEXT NOT NULL,
+                    relation_ids_json TEXT NOT NULL,
+                    priority REAL NOT NULL,
+                    status TEXT NOT NULL,
+                    privacy_level TEXT NOT NULL,
+                    created_at TEXT,
+                    updated_at TEXT,
+                    expires_at TEXT,
+                    lifecycle_json TEXT NOT NULL DEFAULT '{}'
+                );
+                CREATE TABLE relations (
+                    relation_id TEXT PRIMARY KEY,
+                    relation_type TEXT NOT NULL,
+                    source_event_id TEXT NOT NULL,
+                    target_event_id TEXT,
+                    description TEXT NOT NULL,
+                    confidence REAL NOT NULL,
+                    evidence_event_ids_json TEXT NOT NULL
+                );
+                INSERT INTO schema_meta (key, value)
+                VALUES ('personal_memory_schema_version', '2');
+                """
+            )
+            conn.execute(
+                """
+                INSERT INTO memory_cards (
+                    card_id, card_type, title, content, event_ids_json,
+                    relation_ids_json, priority, status, privacy_level, lifecycle_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    "card_legacy",
+                    "profile",
+                    "建材浏览摘要",
+                    "用户浏览建材商品。",
+                    '["evt_recent", "evt_recent"]',
+                    "[]",
+                    0.8,
+                    "active",
+                    "derived",
+                    "{}",
+                ),
+            )
+            conn.execute(
+                """
+                INSERT INTO relations (
+                    relation_id, relation_type, source_event_id, target_event_id,
+                    description, confidence, evidence_event_ids_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    "rel_legacy",
+                    "behavior_causal",
+                    "evt_recent",
+                    "evt_target",
+                    "近期浏览形成购物线索",
+                    0.7,
+                    '["evt_recent", "evt_evidence"]',
+                ),
+            )
+            conn.commit()
+            conn.close()
+
+            store = PersonalMemoryStore(db_path)
+            store.ensure_initialized()
+
+            conn = sqlite3.connect(db_path)
+            try:
+                version = conn.execute(
+                    "SELECT value FROM schema_meta WHERE key = 'personal_memory_schema_version'"
+                ).fetchone()[0]
+                card_rows = conn.execute(
+                    "SELECT card_id, event_id FROM card_events ORDER BY card_id, event_id"
+                ).fetchall()
+                relation_rows = conn.execute(
+                    "SELECT relation_id, event_id FROM relation_events ORDER BY relation_id, event_id"
+                ).fetchall()
+            finally:
+                conn.close()
+
+        self.assertEqual(version, "3")
+        self.assertEqual(card_rows, [("card_legacy", "evt_recent")])
+        self.assertEqual(
+            relation_rows,
+            [
+                ("rel_legacy", "evt_evidence"),
+                ("rel_legacy", "evt_recent"),
+                ("rel_legacy", "evt_target"),
+            ],
+        )
 
     def test_task_resume_plan_falls_back_to_recent_candidates_when_text_misses(self) -> None:
         from runner.mobiagent.personal_memory.planner import plan_memory_query
