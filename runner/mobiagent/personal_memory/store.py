@@ -382,7 +382,9 @@ class PersonalMemoryStore:
                         "task_id": row["task_id"],
                         "confidence": row["confidence"],
                     },
-                    explanation_trace=_event_trace(row, query, hit_score, fts_ids),
+                    explanation_trace=_event_trace(row, query, hit_score, fts_ids)
+                    if query.include_explanation
+                    else [],
                 )
             )
         return hits
@@ -436,7 +438,9 @@ class PersonalMemoryStore:
                         linked_event_ids,
                         relation_event_ids,
                         include_structured_filters=linked_event_ids is not None,
-                    ),
+                    )
+                    if query.include_explanation
+                    else [],
                 )
             )
         return hits
@@ -486,7 +490,9 @@ class PersonalMemoryStore:
                         "expires_at": row["expires_at"],
                         "lifecycle": lifecycle,
                     },
-                    explanation_trace=_card_trace(row, query, hit_score, fts_ids, linked_event_ids, event_ids, lifecycle),
+                    explanation_trace=_card_trace(row, query, hit_score, fts_ids, linked_event_ids, event_ids, lifecycle)
+                    if query.include_explanation
+                    else [],
                 )
             )
         return hits

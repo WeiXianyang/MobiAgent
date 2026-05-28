@@ -842,6 +842,42 @@ class PersonalMemoryStoreTests(unittest.TestCase):
         self.assertIn("text_match", [item["stage"] for item in traces_by_id["card_todo_shop"]])
         self.assertIn("linked_event", [item["stage"] for item in traces_by_id["rel_recent"]])
 
+    def test_search_can_disable_explanation_trace_for_low_latency_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            store = PersonalMemoryStore(Path(tmp) / "memory.db")
+            store.initialize()
+            store.upsert_events([_sample_event("evt_recent", "2026-05-25T20:05:05")])
+
+            hits = store.search(
+                AgentMemoryQuery(
+                    intent="fast_lookup",
+                    text="建材",
+                    include_cards=False,
+                    include_relations=False,
+                    include_explanation=False,
+                )
+            )
+
+        self.assertEqual(hits[0].item_id, "evt_recent")
+        self.assertEqual(hits[0].explanation_trace, [])
+
+    def test_search_includes_explanation_trace_by_default(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            store = PersonalMemoryStore(Path(tmp) / "memory.db")
+            store.initialize()
+            store.upsert_events([_sample_event("evt_recent", "2026-05-25T20:05:05")])
+
+            hits = store.search(
+                AgentMemoryQuery(
+                    intent="explain_lookup",
+                    text="建材",
+                    include_cards=False,
+                    include_relations=False,
+                )
+            )
+
+        self.assertTrue(hits[0].explanation_trace)
+
     def test_relation_trace_omits_unapplied_privacy_filter(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             store = PersonalMemoryStore(Path(tmp) / "memory.db")
