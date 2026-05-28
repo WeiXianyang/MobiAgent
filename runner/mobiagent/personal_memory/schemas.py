@@ -63,6 +63,10 @@ class MemoryCard:
     priority: float
     status: str
     privacy_level: str
+    created_at: str | None = None
+    updated_at: str | None = None
+    expires_at: str | None = None
+    lifecycle: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -95,6 +99,7 @@ class MemoryHit:
     event_ids: list[str] = field(default_factory=list)
     relation_ids: list[str] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
+    explanation_trace: list[dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

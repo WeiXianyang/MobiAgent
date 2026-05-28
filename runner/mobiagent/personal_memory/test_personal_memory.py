@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import contextlib
+from datetime import datetime
 import io
 import json
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
@@ -17,6 +19,11 @@ from runner.mobiagent.personal_memory.schemas import (
 )
 from runner.mobiagent.personal_memory.cards import build_memory_cards
 from runner.mobiagent.personal_memory.ingest import events_from_profile_events, relations_from_profile_relations
+from runner.mobiagent.personal_memory.lifecycle import (
+    apply_confidence_decay,
+    detect_profile_conflicts,
+    lifecycle_adjusted_priority,
+)
 from runner.mobiagent.personal_memory.store import PersonalMemoryStore
 from runner.mobiagent.personal_memory.vector import LexicalSemanticMemory
 from runner.mobiagent.profile_pipeline.schemas import ProfileItem, Relation, TodoItem, UserEvent
@@ -106,6 +113,104 @@ class PersonalMemorySchemaTests(unittest.TestCase):
         self.assertEqual(edge.relation_type, "causes")
         self.assertEqual(card.relation_ids, ["rel_chat_to_shop"])
         self.assertEqual(card.status, "active")
+
+    def test_card_and_hit_serialize_lifecycle_and_explanation_trace(self) -> None:
+        card = MemoryCard(
+            card_id="card_profile_food",
+            card_type="profile",
+            title="饮食偏好",
+            content="用户喜欢火锅。",
+            event_ids=["evt_hotpot"],
+            relation_ids=["rel_hotpot"],
+            priority=0.8,
+            status="active",
+            privacy_level="derived",
+            created_at="2026-05-01T00:00:00",
+            updated_at="2026-05-20T00:00:00",
+            expires_at=None,
+            lifecycle={"decay_factor": 0.9, "reinforcement": 0.1},
+        )
+        hit = MemoryHit(
+            item_id="card_profile_food",
+            layer="card",
+            text="饮食偏好\n用户喜欢火锅。",
+            score=0.9,
+            event_ids=["evt_hotpot"],
+            relation_ids=["rel_hotpot"],
+            explanation_trace=[
+                {
+                    "stage": "card_match",
+                    "reason": "Card text matched query",
+                    "details": {"card_type": "profile"},
+                }
+            ],
+        )
+
+        self.assertEqual(card.to_dict()["created_at"], "2026-05-01T00:00:00")
+        self.assertEqual(card.to_dict()["updated_at"], "2026-05-20T00:00:00")
+        self.assertIsNone(card.to_dict()["expires_at"])
+        self.assertEqual(card.to_dict()["lifecycle"]["decay_factor"], 0.9)
+        self.assertEqual(hit.to_dict()["explanation_trace"][0]["stage"], "card_match")
+
+
+class PersonalMemoryLifecycleTests(unittest.TestCase):
+    def test_confidence_decay_reduces_old_memory(self) -> None:
+        now = datetime.fromisoformat("2026-05-27T00:00:00")
+
+        recent = apply_confidence_decay(0.9, "2026-05-26T00:00:00", now=now, half_life_days=30.0)
+        old = apply_confidence_decay(0.9, "2026-04-27T00:00:00", now=now, half_life_days=30.0)
+
+        self.assertGreater(recent.adjusted_confidence, old.adjusted_confidence)
+        self.assertAlmostEqual(old.decay_factor, 0.5, places=2)
+
+    def test_lifecycle_accepts_aware_timestamps_with_naive_now(self) -> None:
+        now = datetime.fromisoformat("2026-05-27T00:00:00")
+
+        decay = apply_confidence_decay(0.9, "2026-05-26T00:00:00+08:00", now=now)
+        priority = lifecycle_adjusted_priority(
+            base_priority=0.9,
+            updated_at="2026-05-20T00:00:00+08:00",
+            now=now,
+            due_time="2026-05-25T00:00:00+08:00",
+            status="open",
+        )
+
+        self.assertGreaterEqual(decay.days_since_update, 0.0)
+        self.assertTrue(priority.expired)
+
+    def test_profile_conflict_detection_for_hotpot_and_avoid_spicy(self) -> None:
+        conflicts = detect_profile_conflicts(
+            [
+                {
+                    "profile_id": "profile_hotpot_like",
+                    "claim": "用户喜欢火锅，周末经常约朋友吃火锅。",
+                    "category": "饮食偏好",
+                },
+                {
+                    "profile_id": "profile_spicy_avoid",
+                    "claim": "用户最近避免辛辣食物，偏好清淡饮食。",
+                    "category": "饮食偏好",
+                },
+            ]
+        )
+
+        self.assertEqual(len(conflicts), 1)
+        self.assertEqual(conflicts[0].profile_id, "profile_hotpot_like")
+        self.assertEqual(conflicts[0].conflicting_profile_id, "profile_spicy_avoid")
+
+    def test_expired_open_todo_priority_is_demoted(self) -> None:
+        now = datetime.fromisoformat("2026-05-27T00:00:00")
+
+        result = lifecycle_adjusted_priority(
+            base_priority=0.9,
+            updated_at="2026-05-20T00:00:00",
+            now=now,
+            due_time="2026-05-25T00:00:00",
+            status="open",
+        )
+
+        self.assertTrue(result.expired)
+        self.assertLess(result.priority_after_lifecycle, 0.5)
 
 
 class PersonalMemoryCardTests(unittest.TestCase):
@@ -244,6 +349,57 @@ class PersonalMemoryCardTests(unittest.TestCase):
         self.assertEqual(weekly.content, reversed_weekly.content)
         self.assertEqual(weekly.event_ids, reversed_weekly.event_ids)
         self.assertEqual(weekly.relation_ids, reversed_weekly.relation_ids)
+
+    def test_cards_apply_lifecycle_conflicts_and_expired_todo_demotion(self) -> None:
+        now = datetime.fromisoformat("2026-05-27T00:00:00")
+        profiles = [
+            ProfileItem(
+                profile_id="profile_hotpot_like",
+                category="饮食偏好",
+                claim="用户喜欢火锅，周末经常约朋友吃火锅。",
+                evidence_event_ids=["evt_hotpot_like"],
+                confidence=0.9,
+                time_range="2026-04-01/2026-04-30",
+                service_eligible=True,
+                updated_at="2026-04-27T00:00:00",
+            ),
+            ProfileItem(
+                profile_id="profile_spicy_avoid",
+                category="饮食偏好",
+                claim="用户最近避免辛辣食物，偏好清淡饮食。",
+                evidence_event_ids=["evt_spicy_avoid"],
+                confidence=0.85,
+                time_range="2026-05-20/2026-05-27",
+                service_eligible=True,
+                updated_at="2026-05-26T00:00:00",
+            ),
+        ]
+        todos = [
+            TodoItem(
+                todo_id="todo_expired",
+                title="确认火锅地点",
+                reason="计划已经过期。",
+                source_event_ids=["evt_hotpot_like"],
+                priority="high",
+                due_time="2026-05-25T00:00:00",
+                status="open",
+                updated_at="2026-05-20T00:00:00",
+            )
+        ]
+
+        cards = build_memory_cards(profiles, todos, [], now=now)
+        by_id = {card.card_id: card for card in cards}
+
+        hotpot = by_id["card_profile_profile_hotpot_like"]
+        avoid = by_id["card_profile_profile_spicy_avoid"]
+        todo = by_id["card_todo_todo_expired"]
+
+        self.assertIn("profile_spicy_avoid", hotpot.lifecycle["conflict_ids"])
+        self.assertLess(hotpot.priority, 0.9)
+        self.assertLess(avoid.priority, 0.85)
+        self.assertTrue(todo.lifecycle["expired"])
+        self.assertLess(todo.priority, 0.5)
+        self.assertEqual(todo.expires_at, "2026-05-25T00:00:00")
 
 
 class PersonalMemoryIngestTests(unittest.TestCase):
@@ -442,6 +598,94 @@ class PersonalMemoryStoreTests(unittest.TestCase):
 
             self.assertEqual([hit.item_id for hit in hits], ["card_recent"])
 
+    def test_card_lifecycle_fields_are_persisted_and_returned(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            store = PersonalMemoryStore(Path(tmp) / "memory.db")
+            store.initialize()
+            store.upsert_cards([
+                MemoryCard(
+                    card_id="card_todo_expired",
+                    card_type="todo",
+                    title="过期待办",
+                    content="已过期。 due_time=2026-05-25T00:00:00",
+                    event_ids=["evt_due"],
+                    relation_ids=[],
+                    priority=0.35,
+                    status="open",
+                    privacy_level="derived",
+                    created_at="2026-05-20T00:00:00",
+                    updated_at="2026-05-20T00:00:00",
+                    expires_at="2026-05-25T00:00:00",
+                    lifecycle={"expired": True, "priority_before_lifecycle": 0.9},
+                )
+            ])
+
+            hits = store.search(
+                AgentMemoryQuery(
+                    intent="todo_service",
+                    text="过期待办",
+                    include_events=False,
+                    include_cards=True,
+                    include_relations=False,
+                )
+            )
+
+        self.assertEqual(hits[0].metadata["created_at"], "2026-05-20T00:00:00")
+        self.assertEqual(hits[0].metadata["updated_at"], "2026-05-20T00:00:00")
+        self.assertEqual(hits[0].metadata["expires_at"], "2026-05-25T00:00:00")
+        self.assertTrue(hits[0].metadata["lifecycle"]["expired"])
+
+    def test_search_migrates_legacy_card_schema_without_initialize(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "memory.db"
+            conn = sqlite3.connect(db_path)
+            conn.executescript(
+                """
+                CREATE TABLE memory_cards (
+                    card_id TEXT PRIMARY KEY,
+                    card_type TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    content TEXT NOT NULL,
+                    event_ids_json TEXT NOT NULL,
+                    relation_ids_json TEXT NOT NULL,
+                    priority REAL NOT NULL,
+                    status TEXT NOT NULL,
+                    privacy_level TEXT NOT NULL
+                );
+                CREATE VIRTUAL TABLE cards_fts USING fts5(
+                    card_id UNINDEXED,
+                    title,
+                    content
+                );
+                """
+            )
+            conn.execute(
+                """
+                INSERT INTO memory_cards (
+                    card_id, card_type, title, content, event_ids_json,
+                    relation_ids_json, priority, status, privacy_level
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                ("card_legacy", "profile", "建材浏览摘要", "用户浏览建材商品。", "[]", "[]", 0.8, "active", "derived"),
+            )
+            conn.execute(
+                "INSERT INTO cards_fts(card_id, title, content) VALUES (?, ?, ?)",
+                ("card_legacy", "建材浏览摘要", "用户浏览建材商品。"),
+            )
+            conn.commit()
+            conn.close()
+
+            store = PersonalMemoryStore(db_path)
+            hits = store.search(
+                AgentMemoryQuery(intent="legacy", text="建材", include_events=False, include_cards=True)
+            )
+
+        self.assertEqual(hits[0].item_id, "card_legacy")
+        self.assertIsNone(hits[0].metadata["created_at"])
+        self.assertIsNone(hits[0].metadata["updated_at"])
+        self.assertIsNone(hits[0].metadata["expires_at"])
+        self.assertEqual(hits[0].metadata["lifecycle"], {})
+
     def test_task_resume_plan_falls_back_to_recent_candidates_when_text_misses(self) -> None:
         from runner.mobiagent.personal_memory.planner import plan_memory_query
 
@@ -545,6 +789,152 @@ class PersonalMemoryStoreTests(unittest.TestCase):
             )
 
         self.assertEqual([hit.item_id for hit in hits], ["rel_recent"])
+
+    def test_search_hits_include_explanation_trace(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            store = PersonalMemoryStore(Path(tmp) / "memory.db")
+            store.initialize()
+            store.upsert_events([_sample_event("evt_recent", "2026-05-25T20:05:05")])
+            store.upsert_relations([
+                RelationEdge(
+                    relation_id="rel_recent",
+                    relation_type="behavior_causal",
+                    source_event_id="evt_recent",
+                    target_event_id=None,
+                    description="近期浏览形成建材购物线索",
+                    confidence=0.7,
+                    evidence_event_ids=["evt_recent"],
+                )
+            ])
+            store.upsert_cards([
+                MemoryCard(
+                    card_id="card_todo_shop",
+                    card_type="todo",
+                    title="复查建材购物需求",
+                    content="浏览足迹显示用户可能仍需比较建材价格。 due_time=none",
+                    event_ids=["evt_recent"],
+                    relation_ids=["rel_recent"],
+                    priority=0.9,
+                    status="open",
+                    privacy_level="derived",
+                    lifecycle={"expired": False, "priority_after_lifecycle": 0.9},
+                )
+            ])
+
+            hits = store.search(
+                AgentMemoryQuery(
+                    intent="todo_service",
+                    text="建材",
+                    time_start="2026-05-20T00:00:00",
+                    apps=["淘宝"],
+                    include_events=True,
+                    include_cards=True,
+                    include_relations=True,
+                    limit=10,
+                )
+            )
+
+        traces_by_id = {hit.item_id: hit.explanation_trace for hit in hits}
+        self.assertTrue(traces_by_id["evt_recent"])
+        self.assertTrue(traces_by_id["card_todo_shop"])
+        self.assertTrue(traces_by_id["rel_recent"])
+        self.assertIn("structured_filter", [item["stage"] for item in traces_by_id["evt_recent"]])
+        self.assertIn("text_match", [item["stage"] for item in traces_by_id["card_todo_shop"]])
+        self.assertIn("linked_event", [item["stage"] for item in traces_by_id["rel_recent"]])
+
+    def test_relation_trace_omits_unapplied_privacy_filter(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            store = PersonalMemoryStore(Path(tmp) / "memory.db")
+            store.initialize()
+            store.upsert_events([_sample_event("evt_recent", "2026-05-25T20:05:05")])
+            store.upsert_relations([
+                RelationEdge(
+                    relation_id="rel_recent",
+                    relation_type="behavior_causal",
+                    source_event_id="evt_recent",
+                    target_event_id=None,
+                    description="近期浏览形成购物线索",
+                    confidence=0.7,
+                    evidence_event_ids=["evt_recent"],
+                )
+            ])
+
+            hits = store.search(
+                AgentMemoryQuery(
+                    intent="relation_lookup",
+                    text="购物线索",
+                    privacy_levels=["nonexistent"],
+                    include_events=False,
+                    include_cards=False,
+                    include_relations=True,
+                )
+            )
+
+        self.assertEqual([hit.item_id for hit in hits], ["rel_recent"])
+        self.assertNotIn("structured_filter", [item["stage"] for item in hits[0].explanation_trace])
+
+    def test_relation_trace_includes_privacy_when_linked_event_filters_apply(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            store = PersonalMemoryStore(Path(tmp) / "memory.db")
+            store.initialize()
+            store.upsert_events([
+                _sample_event("evt_derived", "2026-05-25T20:05:05"),
+                NormalizedEvent(
+                    event_id="evt_raw",
+                    user_id="local_user",
+                    event_time="2026-05-25T20:05:05",
+                    app="淘宝",
+                    package_name="com.taobao.taobao",
+                    event_type="shopping_browse",
+                    action="observe",
+                    summary="原始浏览记录",
+                    entities={},
+                    artifact_ids=[],
+                    task_id="task_shopping",
+                    state="observed",
+                    confidence=0.8,
+                    privacy_level="raw",
+                ),
+            ])
+            store.upsert_relations([
+                RelationEdge(
+                    relation_id="rel_derived",
+                    relation_type="behavior_causal",
+                    source_event_id="evt_derived",
+                    target_event_id=None,
+                    description="derived relation",
+                    confidence=0.7,
+                    evidence_event_ids=["evt_derived"],
+                )
+            ])
+
+            derived_hits = store.search(
+                AgentMemoryQuery(
+                    intent="relation_lookup",
+                    text="",
+                    time_start="2026-05-20T00:00:00",
+                    privacy_levels=["derived"],
+                    include_events=False,
+                    include_cards=False,
+                    include_relations=True,
+                )
+            )
+            raw_hits = store.search(
+                AgentMemoryQuery(
+                    intent="relation_lookup",
+                    text="",
+                    time_start="2026-05-20T00:00:00",
+                    privacy_levels=["raw"],
+                    include_events=False,
+                    include_cards=False,
+                    include_relations=True,
+                )
+            )
+
+        self.assertEqual([hit.item_id for hit in derived_hits], ["rel_derived"])
+        self.assertEqual(raw_hits, [])
+        structured = next(item for item in derived_hits[0].explanation_trace if item["stage"] == "structured_filter")
+        self.assertEqual(structured["details"]["privacy_levels"], ["derived"])
 
 
 class PersonalMemoryRelationTests(unittest.TestCase):
@@ -865,6 +1255,8 @@ class PersonalMemoryCliTests(unittest.TestCase):
         self.assertEqual(search_code, 0)
         self.assertEqual(json.loads(build_stdout.getvalue())["status"], "built")
         self.assertIn("evt_chat_jsonl", [hit["item_id"] for hit in search_payload["hits"]])
+        self.assertIn("explanation_trace", search_payload["hits"][0])
+        self.assertTrue(search_payload["hits"][0]["explanation_trace"])
 
     def test_cli_build_with_profiles_and_todos_writes_searchable_cards(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

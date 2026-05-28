@@ -243,6 +243,25 @@ Experience memory enables the planner to retrieve and use similar past task exec
 
 Action memory (AgentRR) caches and reuses successful action sequences to accelerate task execution. For ActTree reproduction and evaluation, see [AgentRR README (ActTree)](agent_rr/README.md). For ActChain (experience-based action memory) which is being integrated with Agent Runner as an experimental feature, see [#49](https://github.com/IPADS-SAI/MobiAgent/pull/49).
 
+##### 4.4 Proactive Personal Memory
+
+`runner/mobiagent/personal_memory` provides a lightweight local memory backend for proactive agents. It stores a SQLite event timeline first, then uses structured indexes, relation edges, and memory cards for profile, todo, and weekly-summary retrieval. VectorDB or Mem0/Milvus can still be used as semantic fallback, but exact time ranges, app filters, relation tracing, todo state, and evidence-bound lookup are handled by the structured store.
+
+Recent lifecycle-aware additions include:
+
+- **Lifecycle-aware memory**: decays confidence by update time and uses related profile records plus detected conflicts to adjust profile priority.
+- **Profile conflict detection**: detects preference conflicts such as “likes hotpot” versus “recently avoids spicy food.”
+- **Expired todo demotion**: lowers the proactive priority of overdue open todos.
+- **Explainable retrieval path**: each hit includes `explanation_trace` with query plan, structured filters, text matches, linked events, lifecycle score adjustments, and final score source.
+
+Core commands:
+
+```bash
+python -m runner.mobiagent.personal_memory.cli build --db memory.db --events events.json --artifacts artifacts.json --relations relations.json --profiles profile.json --todos todos.json
+python -m runner.mobiagent.profile_pipeline.cli build-personal-memory --events-json events.jsonl --relations-json relations.jsonl --profiles-json profile.json --todos-json todos.json --db memory.db
+python -m runner.mobiagent.personal_memory.cli search --db memory.db --query "generate a profile report for the past week"
+```
+
 #### 5. Launch Agent Runner
 
 Write the list of tasks that you would like to test in `runner/mobiagent/task.json`, then launch agent runner:

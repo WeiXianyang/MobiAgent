@@ -72,7 +72,11 @@ class PersonalMemoryStore:
                     relation_ids_json TEXT NOT NULL,
                     priority REAL NOT NULL,
                     status TEXT NOT NULL,
-                    privacy_level TEXT NOT NULL
+                    privacy_level TEXT NOT NULL,
+                    created_at TEXT,
+                    updated_at TEXT,
+                    expires_at TEXT,
+                    lifecycle_json TEXT NOT NULL DEFAULT '{}'
                 );
 
                 CREATE INDEX IF NOT EXISTS idx_events_event_time ON events(event_time);
@@ -95,6 +99,10 @@ class PersonalMemoryStore:
                 );
                 """
             )
+            _ensure_column(conn, "memory_cards", "created_at", "TEXT")
+            _ensure_column(conn, "memory_cards", "updated_at", "TEXT")
+            _ensure_column(conn, "memory_cards", "expires_at", "TEXT")
+            _ensure_column(conn, "memory_cards", "lifecycle_json", "TEXT NOT NULL DEFAULT '{}'")
 
     def upsert_artifacts(self, artifacts: Iterable[RawArtifact]) -> None:
         with self._connect() as conn:
@@ -226,6 +234,10 @@ class PersonalMemoryStore:
                     card.priority,
                     card.status,
                     card.privacy_level,
+                    card.created_at,
+                    card.updated_at,
+                    card.expires_at,
+                    _to_json(card.lifecycle),
                 )
             )
             fts_rows.append((card.card_id, card.title, card.content))
@@ -235,8 +247,9 @@ class PersonalMemoryStore:
                 """
                 INSERT INTO memory_cards (
                     card_id, card_type, title, content, event_ids_json,
-                    relation_ids_json, priority, status, privacy_level
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    relation_ids_json, priority, status, privacy_level,
+                    created_at, updated_at, expires_at, lifecycle_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(card_id) DO UPDATE SET
                     card_type = excluded.card_type,
                     title = excluded.title,
@@ -245,7 +258,11 @@ class PersonalMemoryStore:
                     relation_ids_json = excluded.relation_ids_json,
                     priority = excluded.priority,
                     status = excluded.status,
-                    privacy_level = excluded.privacy_level
+                    privacy_level = excluded.privacy_level,
+                    created_at = excluded.created_at,
+                    updated_at = excluded.updated_at,
+                    expires_at = excluded.expires_at,
+                    lifecycle_json = excluded.lifecycle_json
                 """,
                 card_rows,
             )
@@ -256,6 +273,7 @@ class PersonalMemoryStore:
             )
 
     def search(self, query: AgentMemoryQuery) -> list[MemoryHit]:
+        self.initialize()
         hits = self._search_once(query)
         if hits or not query.semantic_fallback:
             return hits
@@ -350,12 +368,13 @@ class PersonalMemoryStore:
                 continue
             if score <= 0:
                 score = float(row["confidence"])
+            hit_score = score
             hits.append(
                 MemoryHit(
                     item_id=row["event_id"],
                     layer="event",
                     text=row["summary"],
-                    score=score,
+                    score=hit_score,
                     event_ids=[row["event_id"]],
                     metadata={
                         "entities": json.loads(row["entities_json"]),
@@ -363,6 +382,7 @@ class PersonalMemoryStore:
                         "task_id": row["task_id"],
                         "confidence": row["confidence"],
                     },
+                    explanation_trace=_event_trace(row, query, hit_score, fts_ids),
                 )
             )
         return hits
@@ -394,12 +414,13 @@ class PersonalMemoryStore:
                 continue
             if score <= 0:
                 score = float(row["confidence"])
+            hit_score = score
             hits.append(
                 MemoryHit(
                     item_id=row["relation_id"],
                     layer="relation",
                     text=row["description"],
-                    score=score,
+                    score=hit_score,
                     event_ids=evidence_event_ids,
                     relation_ids=[row["relation_id"]],
                     metadata={
@@ -408,6 +429,14 @@ class PersonalMemoryStore:
                         "target_event_id": row["target_event_id"],
                         "confidence": row["confidence"],
                     },
+                    explanation_trace=_relation_trace(
+                        row,
+                        query,
+                        hit_score,
+                        linked_event_ids,
+                        relation_event_ids,
+                        include_structured_filters=linked_event_ids is not None,
+                    ),
                 )
             )
         return hits
@@ -416,7 +445,8 @@ class PersonalMemoryStore:
         where, params = _card_filters(query)
         sql = (
             "SELECT card_id, title, content, event_ids_json, relation_ids_json, "
-            "priority, card_type, status, privacy_level FROM memory_cards"
+            "priority, card_type, status, privacy_level, created_at, updated_at, "
+            "expires_at, lifecycle_json FROM memory_cards"
         )
         if where:
             sql += " WHERE " + " AND ".join(where)
@@ -436,12 +466,14 @@ class PersonalMemoryStore:
                 continue
             if score <= 0:
                 score = float(row["priority"])
+            hit_score = score
+            lifecycle = json.loads(row["lifecycle_json"])
             hits.append(
                 MemoryHit(
                     item_id=row["card_id"],
                     layer="card",
                     text=f"{row['title']}\n{row['content']}",
-                    score=score,
+                    score=hit_score,
                     event_ids=event_ids,
                     relation_ids=json.loads(row["relation_ids_json"]),
                     metadata={
@@ -449,10 +481,186 @@ class PersonalMemoryStore:
                         "status": row["status"],
                         "privacy_level": row["privacy_level"],
                         "priority": row["priority"],
+                        "created_at": row["created_at"],
+                        "updated_at": row["updated_at"],
+                        "expires_at": row["expires_at"],
+                        "lifecycle": lifecycle,
                     },
+                    explanation_trace=_card_trace(row, query, hit_score, fts_ids, linked_event_ids, event_ids, lifecycle),
                 )
             )
         return hits
+
+
+def _event_trace(
+    row: sqlite3.Row,
+    query: AgentMemoryQuery,
+    score: float,
+    fts_ids: set[str],
+) -> list[dict[str, Any]]:
+    trace = _base_trace(query)
+    text_score = _text_score(
+        row["event_id"],
+        f"{row['summary']} {_flatten_text(json.loads(row['entities_json']))}",
+        query.text,
+        fts_ids,
+    )
+    if query.text and text_score > 0:
+        trace.append(
+            {
+                "stage": "text_match",
+                "reason": "Event summary or entities matched query text",
+                "details": {
+                    "query": query.text,
+                    "fts_match": row["event_id"] in fts_ids,
+                    "summary_contains_query": query.text.lower() in row["summary"].lower(),
+                },
+            }
+        )
+    trace.append(
+        {
+            "stage": "score",
+            "reason": "Event score uses text match score when available, otherwise event confidence",
+            "details": {"score": score, "text_score": text_score, "confidence": float(row["confidence"])},
+        }
+    )
+    return trace
+
+
+def _card_trace(
+    row: sqlite3.Row,
+    query: AgentMemoryQuery,
+    score: float,
+    fts_ids: set[str],
+    linked_event_ids: set[str] | None,
+    event_ids: list[str],
+    lifecycle: dict[str, Any],
+) -> list[dict[str, Any]]:
+    trace = _base_trace(query)
+    if linked_event_ids is not None:
+        trace.append(
+            {
+                "stage": "linked_event",
+                "reason": "Card is linked to an event that matched structured event filters",
+                "details": {"matched_event_ids": sorted(linked_event_ids.intersection(event_ids))},
+            }
+        )
+    card_text = f"{row['title']} {row['content']}"
+    text_score = _text_score(row["card_id"], card_text, query.text, fts_ids)
+    if query.text and text_score > 0:
+        trace.append(
+            {
+                "stage": "text_match",
+                "reason": "Card title or content matched query text",
+                "details": {
+                    "query": query.text,
+                    "fts_match": row["card_id"] in fts_ids,
+                    "content_contains_query": query.text.lower() in card_text.lower(),
+                },
+            }
+        )
+    if lifecycle:
+        trace.append(
+            {
+                "stage": "lifecycle",
+                "reason": "Card priority includes lifecycle adjustments",
+                "details": lifecycle,
+            }
+        )
+    trace.append(
+        {
+            "stage": "score",
+            "reason": "Card score uses text match score when available, otherwise lifecycle-adjusted priority",
+            "details": {"score": score, "text_score": text_score, "priority": float(row["priority"])},
+        }
+    )
+    return trace
+
+
+def _relation_trace(
+    row: sqlite3.Row,
+    query: AgentMemoryQuery,
+    score: float,
+    linked_event_ids: set[str] | None,
+    relation_event_ids: set[str],
+    *,
+    include_structured_filters: bool,
+) -> list[dict[str, Any]]:
+    trace = _base_trace(query, include_structured_filters=include_structured_filters)
+    if linked_event_ids is not None:
+        trace.append(
+            {
+                "stage": "linked_event",
+                "reason": "Relation is connected to an event that matched structured event filters",
+                "details": {"matched_event_ids": sorted(linked_event_ids.intersection(relation_event_ids))},
+            }
+        )
+    text_score = _relation_score(row, query.text) if query.text else 0.0
+    if query.text and text_score > 0:
+        trace.append(
+            {
+                "stage": "text_match",
+                "reason": "Relation type or description matched query text",
+                "details": {"query": query.text, "relation_type": row["relation_type"]},
+            }
+        )
+    trace.append(
+        {
+            "stage": "score",
+            "reason": "Relation score uses text match score when available, otherwise relation confidence",
+            "details": {"score": score, "text_score": text_score, "confidence": float(row["confidence"])},
+        }
+    )
+    return trace
+
+
+def _base_trace(
+    query: AgentMemoryQuery,
+    *,
+    include_structured_filters: bool = True,
+) -> list[dict[str, Any]]:
+    trace: list[dict[str, Any]] = [
+        {
+            "stage": "query_plan",
+            "reason": "Search executed with an AgentMemoryQuery plan",
+            "details": {
+                "intent": query.intent,
+                "include_events": query.include_events,
+                "include_cards": query.include_cards,
+                "include_relations": query.include_relations,
+                "semantic_fallback": query.semantic_fallback,
+            },
+        }
+    ]
+    filters = _structured_filter_details(query) if include_structured_filters else {}
+    if filters:
+        trace.append(
+            {
+                "stage": "structured_filter",
+                "reason": "Structured filters narrowed candidate memories before scoring",
+                "details": filters,
+            }
+        )
+    return trace
+
+
+def _structured_filter_details(query: AgentMemoryQuery) -> dict[str, Any]:
+    details: dict[str, Any] = {}
+    if query.time_start:
+        details["time_start"] = query.time_start
+    if query.time_end:
+        details["time_end"] = query.time_end
+    if query.apps:
+        details["apps"] = query.apps
+    if query.event_types:
+        details["event_types"] = query.event_types
+    if query.task_ids:
+        details["task_ids"] = query.task_ids
+    if query.states:
+        details["states"] = query.states
+    if query.privacy_levels:
+        details["privacy_levels"] = query.privacy_levels
+    return details
 
 
 def _event_filters(query: AgentMemoryQuery) -> tuple[list[str], list[Any]]:
@@ -595,3 +803,9 @@ def _flatten_text(value: Any) -> str:
 
 def _to_json(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True)
+
+
+def _ensure_column(conn: sqlite3.Connection, table: str, column: str, definition: str) -> None:
+    columns = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+    if column not in columns:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")

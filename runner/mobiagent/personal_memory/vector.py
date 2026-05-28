@@ -32,6 +32,7 @@ class LexicalSemanticMemory:
                     event_ids=hit.event_ids,
                     relation_ids=hit.relation_ids,
                     metadata=metadata,
+                    explanation_trace=hit.explanation_trace,
                 )
             )
         ranked.sort(key=lambda item: item.score, reverse=True)
