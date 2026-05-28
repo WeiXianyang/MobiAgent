@@ -541,7 +541,7 @@ class PersonalMemoryStoreTests(unittest.TestCase):
             finally:
                 conn.close()
 
-        self.assertEqual(version, "3")
+        self.assertEqual(version, "4")
 
     def test_card_event_index_table_is_populated_and_updated(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -777,6 +777,46 @@ class PersonalMemoryStoreTests(unittest.TestCase):
 
             self.assertEqual(hits[0].item_id, "evt_shop_001")
             self.assertGreater(hits[0].score, 0)
+
+    def test_relation_text_search_uses_fts_index(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "memory.db"
+            store = PersonalMemoryStore(db_path)
+            store.initialize()
+            store.upsert_relations([
+                RelationEdge(
+                    relation_id="rel_shop_need",
+                    relation_type="behavior_causal",
+                    source_event_id="evt_shop_001",
+                    target_event_id=None,
+                    description="浏览建材后形成近期购物需求线索",
+                    confidence=0.74,
+                    evidence_event_ids=["evt_shop_001"],
+                )
+            ])
+
+            conn = sqlite3.connect(db_path)
+            try:
+                fts_rows = conn.execute(
+                    "SELECT relation_id FROM relations_fts WHERE relations_fts MATCH ?",
+                    ("建材",),
+                ).fetchall()
+            finally:
+                conn.close()
+
+            hits = store.search(
+                AgentMemoryQuery(
+                    intent="relation_lookup",
+                    text="建材",
+                    include_events=False,
+                    include_cards=False,
+                    include_relations=True,
+                    limit=5,
+                )
+            )
+
+        self.assertEqual(fts_rows, [("rel_shop_need",)])
+        self.assertEqual([hit.item_id for hit in hits], ["rel_shop_need"])
 
     def test_card_search_respects_linked_event_filters(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1079,7 +1119,7 @@ class PersonalMemoryStoreTests(unittest.TestCase):
                     "behavior_causal",
                     "evt_recent",
                     "evt_target",
-                    "近期浏览形成购物线索",
+                    "近期浏览建材形成购物线索",
                     0.7,
                     '["evt_recent", "evt_evidence"]',
                 ),
@@ -1101,10 +1141,14 @@ class PersonalMemoryStoreTests(unittest.TestCase):
                 relation_rows = conn.execute(
                     "SELECT relation_id, event_id FROM relation_events ORDER BY relation_id, event_id"
                 ).fetchall()
+                fts_rows = conn.execute(
+                    "SELECT relation_id FROM relations_fts WHERE relations_fts MATCH ?",
+                    ("建材",),
+                ).fetchall()
             finally:
                 conn.close()
 
-        self.assertEqual(version, "3")
+        self.assertEqual(version, "4")
         self.assertEqual(card_rows, [("card_legacy", "evt_recent")])
         self.assertEqual(
             relation_rows,
@@ -1114,6 +1158,7 @@ class PersonalMemoryStoreTests(unittest.TestCase):
                 ("rel_legacy", "evt_target"),
             ],
         )
+        self.assertEqual(fts_rows, [("rel_legacy",)])
 
     def test_legacy_v2_migration_rebuilds_stale_event_link_indexes(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

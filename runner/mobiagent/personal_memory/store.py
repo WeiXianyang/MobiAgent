@@ -16,7 +16,7 @@ from runner.mobiagent.personal_memory.schemas import (
     RelationEdge,
 )
 
-SCHEMA_VERSION = "3"
+SCHEMA_VERSION = "4"
 SCHEMA_VERSION_KEY = "personal_memory_schema_version"
 
 
@@ -119,6 +119,11 @@ class PersonalMemoryStore:
                     title,
                     content
                 );
+                CREATE VIRTUAL TABLE IF NOT EXISTS relations_fts USING fts5(
+                    relation_id UNINDEXED,
+                    relation_type,
+                    description
+                );
                 """
             )
             _ensure_column(conn, "memory_cards", "created_at", "TEXT")
@@ -127,6 +132,7 @@ class PersonalMemoryStore:
             _ensure_column(conn, "memory_cards", "lifecycle_json", "TEXT NOT NULL DEFAULT '{}'")
             _backfill_card_events(conn)
             _backfill_relation_events(conn)
+            _backfill_relations_fts(conn)
             _set_schema_version(conn, SCHEMA_VERSION)
 
     def ensure_initialized(self) -> None:
@@ -244,6 +250,14 @@ class PersonalMemoryStore:
             for relation in latest_relations.values()
             for event_id in _unique_relation_event_ids(relation)
         ]
+        fts_rows = [
+            (
+                relation.relation_id,
+                _fts_search_text(relation.relation_type),
+                _fts_search_text(relation.description),
+            )
+            for relation in latest_relations.values()
+        ]
 
         with self._connect() as conn:
             conn.executemany(
@@ -269,6 +283,11 @@ class PersonalMemoryStore:
             conn.executemany(
                 "INSERT OR IGNORE INTO relation_events(relation_id, event_id) VALUES (?, ?)",
                 list(dict.fromkeys(relation_event_rows)),
+            )
+            conn.executemany("DELETE FROM relations_fts WHERE relation_id = ?", [(row[0],) for row in fts_rows])
+            conn.executemany(
+                "INSERT INTO relations_fts(relation_id, relation_type, description) VALUES (?, ?, ?)",
+                fts_rows,
             )
 
     def upsert_cards(self, cards: Iterable[MemoryCard]) -> None:
@@ -459,6 +478,7 @@ class PersonalMemoryStore:
     def _search_relations(self, conn: sqlite3.Connection, query: AgentMemoryQuery) -> list[MemoryHit]:
         has_linked_event_filters = _has_linked_event_filters(query)
         linked_event_ids = _matching_event_ids(conn, query) if has_linked_event_filters and query.include_explanation else None
+        fts_ids = _matching_fts_ids(conn, "relations_fts", "relation_id", query.text)
         if not has_linked_event_filters:
             rows = conn.execute(
                 """
@@ -495,7 +515,8 @@ class PersonalMemoryStore:
                 *evidence_event_ids,
             }
             relation_event_ids.discard(None)
-            score = _relation_score(row, query.text)
+            text_score = _relation_score(row, query.text, fts_ids)
+            score = text_score
             if require_text_match and score <= 0:
                 continue
             if score <= 0:
@@ -521,6 +542,7 @@ class PersonalMemoryStore:
                         hit_score,
                         linked_event_ids,
                         relation_event_ids,
+                        text_score,
                         include_structured_filters=has_linked_event_filters,
                     )
                     if query.include_explanation
@@ -690,6 +712,7 @@ def _relation_trace(
     score: float,
     linked_event_ids: set[str] | None,
     relation_event_ids: set[str],
+    text_score: float,
     *,
     include_structured_filters: bool,
 ) -> list[dict[str, Any]]:
@@ -702,7 +725,6 @@ def _relation_trace(
                 "details": {"matched_event_ids": sorted(linked_event_ids.intersection(relation_event_ids))},
             }
         )
-    text_score = _relation_score(row, query.text) if query.text else 0.0
     if query.text and text_score > 0:
         trace.append(
             {
@@ -870,6 +892,22 @@ def _backfill_relation_events(conn: sqlite3.Connection) -> None:
     )
 
 
+def _backfill_relations_fts(conn: sqlite3.Connection) -> None:
+    rows = conn.execute("SELECT relation_id, relation_type, description FROM relations").fetchall()
+    conn.execute("DELETE FROM relations_fts")
+    conn.executemany(
+        "INSERT INTO relations_fts(relation_id, relation_type, description) VALUES (?, ?, ?)",
+        [
+            (
+                row["relation_id"],
+                _fts_search_text(row["relation_type"]),
+                _fts_search_text(row["description"]),
+            )
+            for row in rows
+        ],
+    )
+
+
 def _unique_event_ids(event_ids: Iterable[str | None]) -> list[str]:
     return list(dict.fromkeys(event_id for event_id in event_ids if event_id is not None))
 
@@ -932,11 +970,11 @@ def _card_score(row: sqlite3.Row, text: str, fts_ids: set[str]) -> float:
     return _text_score(row["card_id"], haystack, text, fts_ids)
 
 
-def _relation_score(row: sqlite3.Row, text: str) -> float:
+def _relation_score(row: sqlite3.Row, text: str, fts_ids: set[str]) -> float:
     if not text:
         return float(row["confidence"])
     haystack = f"{row['description']} {row['relation_type']}"
-    return _text_score(row["relation_id"], haystack, text, set())
+    return _text_score(row["relation_id"], haystack, text, fts_ids)
 
 
 def _text_score(item_id: str, haystack: str, needle: str, fts_ids: set[str]) -> float:
@@ -946,6 +984,31 @@ def _text_score(item_id: str, haystack: str, needle: str, fts_ids: set[str]) -> 
     if needle and needle in haystack:
         score += 1.0
     return score
+
+
+def _fts_search_text(value: str) -> str:
+    cjk_tokens: list[str] = []
+    current = ""
+    for char in value:
+        if _is_cjk(char):
+            current += char
+            continue
+        cjk_tokens.extend(_cjk_tokens(current))
+        current = ""
+    cjk_tokens.extend(_cjk_tokens(current))
+    if not cjk_tokens:
+        return value
+    return f"{value} {' '.join(cjk_tokens)}"
+
+
+def _cjk_tokens(text: str) -> list[str]:
+    tokens = list(text)
+    tokens.extend(text[index : index + 2] for index in range(max(len(text) - 1, 0)))
+    return tokens
+
+
+def _is_cjk(char: str) -> bool:
+    return "\u4e00" <= char <= "\u9fff"
 
 
 def _flatten_text(value: Any) -> str:
