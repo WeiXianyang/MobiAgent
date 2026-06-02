@@ -245,7 +245,15 @@ Action memory (AgentRR) caches and reuses successful action sequences to acceler
 
 ##### 4.4 Proactive Personal Memory
 
-`runner/mobiagent/personal_memory` provides a lightweight local memory backend for proactive agents. It stores a SQLite event timeline first, then uses structured indexes, relation edges, and memory cards for profile, todo, and weekly-summary retrieval. VectorDB or Mem0/Milvus can still be used as semantic fallback, but exact time ranges, app filters, relation tracing, todo state, and evidence-bound lookup are handled by the structured store.
+`runner/mobiagent/personal_memory` provides **PML-Hybrid**, a lightweight Agent Search memory backend for proactive agents. It stores a SQLite event timeline first, then uses structured indexes, relation edges, and memory cards for profile, todo, and weekly-summary retrieval. VectorDB or Mem0/Milvus can still be used as an optional scalar+vector+multimodal recall backend, but exact time ranges, app filters, relation tracing, todo state, and evidence-bound lookup are owned by the structured memory layer.
+
+This design keeps Milvus useful without making it the whole memory system:
+
+- scalar labels handle time, app, event type, task, state, and privacy range filters;
+- local relation/card indexes support Agent Search steps such as "continue the previous task" or "find unresolved hotel booking follow-ups";
+- multimodal artifacts keep screenshot, UI tree, OCR, action trace, and JSON evidence linked to memory rows;
+- progressive disclosure layers expose what the agent can read at each cost level: scalar labels first, then summaries/cards, relation context, evidence references, optional vector recall, and raw artifacts;
+- budget-aware embedding is deferred until structured retrieval returns too few candidates, so cached/precomputed vectors can be used when they actually add value.
 
 Recent lifecycle-aware additions include:
 
@@ -253,6 +261,8 @@ Recent lifecycle-aware additions include:
 - **Profile conflict detection**: detects preference conflicts such as “likes hotpot” versus “recently avoids spicy food.”
 - **Expired todo demotion**: lowers the proactive priority of overdue open todos.
 - **Explainable retrieval path**: each hit includes `explanation_trace` with query plan, structured filters, text matches, linked events, lifecycle score adjustments, and final score source.
+- **Hybrid Agent Search plan**: `runner/mobiagent/personal_memory/hybrid.py` exposes the planned scalar, FTS, relation/card, multimodal evidence, optional vector, and rerank stages for a query.
+- **Progressive disclosure plan**: `HybridSearchPlan.disclosure_layers` records L0-L5 cost boundaries, so Agent Search can stop before vector recall or raw artifact reads when structured/card/evidence lookup is already enough.
 
 Lightweight storage design:
 
@@ -263,12 +273,24 @@ Lightweight storage design:
 - `schema_meta` records the store format version and triggers lightweight rebuilds of derived indexes when the schema changes.
 - `AgentMemoryQuery.include_explanation=False` enables a low-latency path that skips `explanation_trace` construction for production or benchmark queries.
 
+Progressive disclosure levels:
+
+| Level | Opens | Contents |
+| --- | --- | --- |
+| L0 | Always | Time, app, event type, task, state, privacy labels |
+| L1 | Query text or card lookup | Event summaries, entity text, card title/content |
+| L2 | Relation/card requested | Relation edges and event-card links |
+| L3 | Candidate hits available | Screenshot, UI tree, OCR, action trace, JSON evidence refs |
+| L4 | Structured hits below threshold | Milvus or other scalar+vector recall |
+| L5 | Agent asks for evidence or trace confidence is low | Raw screenshot, OCR, UI tree, action log |
+
 Core commands:
 
 ```bash
 python -m runner.mobiagent.personal_memory.cli build --db memory.db --events events.json --artifacts artifacts.json --relations relations.json --profiles profile.json --todos todos.json
 python -m runner.mobiagent.profile_pipeline.cli build-personal-memory --events-json events.jsonl --relations-json relations.jsonl --profiles-json profile.json --todos-json todos.json --db memory.db
 python -m runner.mobiagent.personal_memory.cli search --db memory.db --query "generate a profile report for the past week"
+python -m runner.mobiagent.personal_memory.cli plan --query "continue the previous hotel booking task"
 python -m runner.mobiagent.personal_memory.benchmark_storage --db .tmp/personal_memory_benchmark.db --events 1000 --cards 200 --relations 200
 ```
 

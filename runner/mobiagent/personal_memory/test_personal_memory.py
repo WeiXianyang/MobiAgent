@@ -18,6 +18,8 @@ from runner.mobiagent.personal_memory.schemas import (
     RelationEdge,
 )
 from runner.mobiagent.personal_memory.cards import build_memory_cards
+from runner.mobiagent.personal_memory.cli import main
+from runner.mobiagent.personal_memory.hybrid import build_hybrid_search_plan
 from runner.mobiagent.personal_memory.ingest import events_from_profile_events, relations_from_profile_relations
 from runner.mobiagent.personal_memory.lifecycle import (
     apply_confidence_decay,
@@ -174,6 +176,67 @@ class PersonalMemorySchemaTests(unittest.TestCase):
         self.assertEqual(hit.to_dict()["explanation_trace"][0]["stage"], "card_match")
 
 
+class HybridPlanTests(unittest.TestCase):
+    def test_hybrid_plan_keeps_milvus_as_optional_budgeted_layer(self) -> None:
+        query = AgentMemoryQuery(
+            intent="hotel_followup",
+            text="找上周携程看过但没订的酒店",
+            time_start="2026-05-20T00:00:00",
+            time_end="2026-05-27T23:59:59",
+            apps=["Ctrip"],
+            event_types=["hotel_browse"],
+            states=["observed"],
+            include_events=True,
+            include_relations=True,
+            include_cards=True,
+            semantic_fallback=True,
+            limit=10,
+        )
+
+        plan = build_hybrid_search_plan(query)
+
+        self.assertEqual(plan.architecture, "pml_hybrid_agent_search")
+        self.assertEqual(plan.backend_role, "milvus_optional_hybrid_index")
+        self.assertFalse(plan.should_call_embedding(structured_hit_count=10))
+        self.assertTrue(plan.should_call_embedding(structured_hit_count=0))
+        self.assertEqual(
+            [stage.name for stage in plan.stages[:3]],
+            ["scalar_filter", "fts_text_match", "relation_card_expansion"],
+        )
+        self.assertIn("screenshot", plan.multimodal_artifact_kinds)
+
+    def test_hybrid_plan_exposes_progressive_disclosure_layers(self) -> None:
+        query = AgentMemoryQuery(
+            intent="hotel_followup",
+            text="找上周携程看过但没订的酒店",
+            include_relations=True,
+            include_cards=True,
+            semantic_fallback=True,
+        )
+
+        plan = build_hybrid_search_plan(query)
+
+        self.assertEqual([layer.level for layer in plan.disclosure_layers], ["L0", "L1", "L2", "L3", "L4", "L5"])
+        self.assertEqual(plan.disclosure_layers[0].name, "index_filter")
+        self.assertIn("event_time", plan.disclosure_layers[0].contents)
+        self.assertIn("screenshot", plan.disclosure_layers[3].contents)
+        self.assertEqual(plan.disclosure_layers[4].opens_when, "structured_hit_count < 3")
+
+    def test_cli_plan_outputs_agent_search_stages(self) -> None:
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            status = main(["plan", "--query", "继续上次那个携程酒店任务"])
+
+        payload = json.loads(output.getvalue())
+
+        self.assertEqual(status, 0)
+        self.assertEqual(payload["plan"]["architecture"], "pml_hybrid_agent_search")
+        vector_stages = [stage for stage in payload["plan"]["stages"] if stage["name"] == "vector_recall"]
+        self.assertEqual(vector_stages[0]["trigger"], "fallback_if_structured_low_confidence")
+        self.assertEqual(payload["plan"]["disclosure_layers"][0]["level"], "L0")
+        self.assertEqual(payload["plan"]["disclosure_layers"][4]["name"], "semantic_recall")
+
+
 class PersonalMemoryLifecycleTests(unittest.TestCase):
     def test_confidence_decay_reduces_old_memory(self) -> None:
         now = datetime.fromisoformat("2026-05-27T00:00:00")
@@ -256,7 +319,7 @@ class PersonalMemoryCardTests(unittest.TestCase):
             status="open",
         )
 
-        cards = build_memory_cards([profile], [todo], [])
+        cards = build_memory_cards([profile], [todo], [], now=datetime.fromisoformat("2026-05-27T00:00:00"))
 
         self.assertEqual(cards[0].card_type, "todo")
         self.assertEqual(cards[0].priority, 0.9)

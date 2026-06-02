@@ -238,9 +238,17 @@ NEO4J_PASSWORD=testpassword
 
 ## Proactive Personal Memory
 
-本项目新增 `runner/mobiagent/personal_memory` 作为 proactive agent 的轻量个人记忆系统。它以本地 SQLite 事件时间线为主体，优先支持时间范围、App、事件类型、任务状态、证据链和关系图检索；画像、待办和周报以 memory card 的方式压缩保存，供主动服务快速读取。
+本项目新增 `runner/mobiagent/personal_memory` 作为 **PML-Hybrid** 轻量个人记忆系统。它以本地 SQLite 事件时间线为主体，优先支持时间范围、App、事件类型、任务状态、证据链和关系图检索；画像、待办和周报以 memory card 的方式压缩保存，供主动服务快速读取。
 
-VectorDB 或 Mem0/Milvus 不再被视为唯一记忆后端。它们适合作为语义相似召回的补充层，用于模糊表达、相似历史任务和弱匹配场景；精确查询、范围查询、因果关系和待办状态由结构化索引和关系图承担。
+VectorDB 或 Mem0/Milvus 作为可选的标量+向量+多模态召回执行层，用于模糊表达、相似历史任务和弱匹配场景；精确查询、范围查询、因果关系、待办状态和证据链由 PML 的结构化索引和关系图承担。
+
+Milvus 的使用边界：
+
+- 标量标签负责时间、App、事件类型、任务、状态、隐私等级等范围过滤。
+- 本地关系/卡片索引支持 “继续上次任务” “找未完成酒店预订线索” 等 Agent Search 步骤。
+- 多模态证据层把 screenshot、UI tree、OCR、action trace、JSON evidence 绑定到记忆行。
+- 渐进式披露层级记录每个成本层打开哪些字段：标量标签、摘要/卡片、关系上下文、证据引用、可选向量召回、原始证据。
+- budget-aware embedding 策略默认先走结构化检索，只有候选不足时才调用向量后端；Milvus 可以承载缓存或预计算向量。
 
 生命周期感知能力：
 
@@ -248,6 +256,8 @@ VectorDB 或 Mem0/Milvus 不再被视为唯一记忆后端。它们适合作为�
 - **冲突画像检测**：识别偏好冲突，例如“喜欢火锅”和“最近避免辛辣”。
 - **过期待办降权**：过期但仍打开的 todo 会自动降低主动服务优先级。
 - **可解释检索路径**：每个 hit 返回 `explanation_trace`，说明查询计划、结构化过滤、文本匹配、关系链接、生命周期调分和最终分数来源。
+- **Hybrid Agent Search plan**：`runner/mobiagent/personal_memory/hybrid.py` 会输出一次查询的标量过滤、FTS、关系/卡片、多模态证据、可选向量召回和重排阶段。
+- **渐进式披露计划**：`HybridSearchPlan.disclosure_layers` 输出 L0-L5 成本边界，结构化/卡片/证据引用已经足够时，Agent Search 可以停止在向量召回或原始证据读取之前。
 
 轻量化存储结构：
 
@@ -258,12 +268,24 @@ VectorDB 或 Mem0/Milvus 不再被视为唯一记忆后端。它们适合作为�
 - `schema_meta` 记录存储格式版本，结构变化时只重建派生索引，不需要引入外部数据库迁移服务。
 - `AgentMemoryQuery.include_explanation=False` 可关闭 `explanation_trace` 构造，用于生产或 benchmark 的低延迟检索路径。
 
+渐进式披露层级：
+
+| 层级 | 打开条件 | 内容 |
+| --- | --- | --- |
+| L0 | 总是打开 | 时间、App、事件类型、任务、状态、隐私标签 |
+| L1 | 有文本查询或需要卡片检索 | 事件摘要、实体文本、卡片标题/正文 |
+| L2 | 查询需要关系或卡片 | 关系边、卡片-事件链接、关系-事件链接 |
+| L3 | 已有候选结果 | screenshot、UI tree、OCR、action trace、JSON 证据引用 |
+| L4 | 结构化候选数低于阈值 | Milvus 或其他标量+向量召回 |
+| L5 | agent 主动要求证据或 trace 置信度低 | 原始截图、完整 OCR、完整 UI tree、完整动作日志 |
+
 核心命令：
 
 ```powershell
 python -m runner.mobiagent.personal_memory.cli build --db memory.db --events events.json --artifacts artifacts.json --relations relations.json --profiles profile.json --todos todos.json
 python -m runner.mobiagent.profile_pipeline.cli build-personal-memory --events-json events.jsonl --relations-json relations.jsonl --profiles-json profile.json --todos-json todos.json --db memory.db
 python -m runner.mobiagent.personal_memory.cli search --db memory.db --query "生成过去一周画像报告"
+python -m runner.mobiagent.personal_memory.cli plan --query "继续上次那个携程酒店任务"
 python -m runner.mobiagent.personal_memory.benchmark_storage --db .tmp\personal_memory_benchmark.db --events 1000 --cards 200 --relations 200
 ```
 

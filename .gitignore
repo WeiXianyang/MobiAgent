@@ -50,3 +50,25 @@ node_modules/
 generated_workflows/
 runner/mobiagent/profile_pipeline/artifacts/
 runner/mobiagent/proactive_service/artifacts/
+
+# Python build, test, and local runtime artifacts
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+build/
+dist/
+*.egg-info/
+.eggs/
+.tmp/
+tmp/
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+*.log
+Thumbs.db

@@ -9,6 +9,7 @@ from typing import Any
 from runner.mobiagent.profile_pipeline.schemas import ProfileItem, Relation, TodoItem, UserEvent
 
 from .cards import build_memory_cards
+from .hybrid import build_hybrid_search_plan
 from .ingest import events_from_profile_events, relations_from_profile_relations
 from .planner import plan_memory_query
 from .schemas import AgentMemoryQuery, NormalizedEvent, RawArtifact, RelationEdge
@@ -31,6 +32,10 @@ def build_parser() -> argparse.ArgumentParser:
     search.add_argument("--db", required=True)
     search.add_argument("--query", required=True)
     search.add_argument("--limit", type=int, default=None)
+
+    plan = subparsers.add_parser("plan", help="Print the PML-Hybrid Agent Search retrieval plan.")
+    plan.add_argument("--query", required=True)
+    plan.add_argument("--limit", type=int, default=None)
 
     return parser
 
@@ -66,6 +71,12 @@ def main(argv: list[str] | None = None) -> int:
         query = _apply_limit(plan_memory_query(args.query), args.limit)
         hits = [hit.to_dict() for hit in store.search(query)]
         print(json.dumps({"query": args.query, "hits": hits}, ensure_ascii=False, indent=2))
+        return 0
+
+    if args.command == "plan":
+        query = _apply_limit(plan_memory_query(args.query), args.limit)
+        plan = build_hybrid_search_plan(query)
+        print(json.dumps({"query": args.query, "plan": plan.to_dict()}, ensure_ascii=False, indent=2))
         return 0
 
     raise ValueError(f"Unsupported command: {args.command}")
